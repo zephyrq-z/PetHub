@@ -1,0 +1,10 @@
+# 由 scripts/copy-assets.js 从 ../../Assets 生成，不进仓库
+assets/
+# electron-builder 生成的图标（build-win.sh 会用 sips 重新生成）
+build/
+# 本地 node_modules / 打包中间产物
+node_modules/
+dist/
+
+# 7z SFX 兜底模块（构建时下载）
+build/sfx/

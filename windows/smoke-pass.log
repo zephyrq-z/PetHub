@@ -1,0 +1,38 @@
+
+> pethub-windows@2.0.0 presmoke
+> node scripts/copy-assets.js
+
+[copy-assets] /Users/zzq/Developer/tools-set/Pet/Assets → windows/assets：shaolan(4793896B) sun(1983283B) fengge(4272830B) jelly(198878B)
+[copy-assets] icon.png：已生成（sips）
+
+> pethub-windows@2.0.0 smoke
+> node scripts/launch.js --smoke
+
+[smoke] PetHub 2.0.0 · electron 38.8.6 · node 22.22.0
+[smoke] assets=/Users/zzq/Developer/tools-set/Pet/windows/assets userData=/var/folders/gz/_7sgx9s12sdcxs4pt91mvhb00000gn/T/pethub-windows-smoke-32559
+[smoke] windows=4 shaolan=260x296@768,797 sunpet=180x228@1064,865 fengge=260x290@1280,803 jelly=224x224@1528,917
+[smoke] validate shaolan clips=37/37 avatar=820x820 ok
+[smoke] validate sunpet clips=28/28 avatar=1254x1254 ok
+[smoke] validate fengge clips=11/11 avatar=1269x1239 ok
+[smoke] validate jelly marks=3/3 ok
+[relay] 2026-10-26T13:43:08.174Z from=shaolan clip=7 hop=0 root=shaolan duration=1.19
+[trace] sunpet 准备接话：890ms 后播 13（root=shaolan hop=1）
+[smoke] 模拟点击 shaolan → clip 7
+[smoke] click shaolan ...
+[relay] 2026-10-26T13:43:09.067Z from=sunpet clip=13 hop=1 root=shaolan duration=0.58
+[trace] fengge 准备接话：380ms 后播 9（root=shaolan hop=2）
+[relay] 2026-10-26T13:43:09.453Z from=fengge clip=9 hop=2 root=shaolan duration=1.15
+[trace] sunpet 准备接话：855ms 后播 11（root=shaolan hop=3）
+[relay] 2026-10-26T13:43:10.317Z from=sunpet clip=11 hop=3 root=shaolan duration=0.79
+[smoke] relay steps=4
+[smoke] step 1/4 from=shaolan hop=0 root=shaolan clip=07 “AI 救不了你”
+[smoke] step 2/4 from=sunpet hop=1 root=shaolan clip=13 “太对了”
+[smoke] step 3/4 from=fengge hop=2 root=shaolan clip=09 “这是个好事啊”
+[smoke] step 4/4 from=sunpet hop=3 root=shaolan clip=11 “这这太对了”
+[smoke] 第 4 步之后 1.5s 内没有第五句
+[relay] enabled=false
+[relay] enabled=true
+[smoke] settings/scale/visibility/relay IPC ok; settings.json 持久化 ok
+[smoke] tray menu ok（19 项，四只右键菜单可构建）
+[smoke] settings window ok（大小联动 / 全局滑块 / 版权声明 / 四只缩放）
+PASS windows=4 clips=37/28/11 chain=shaolan>sunpet>fengge>sunpet root=shaolan elapsed=8.3s

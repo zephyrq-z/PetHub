@@ -1,0 +1,87 @@
+{
+  "name": "pethub-windows",
+  "productName": "PetHub",
+  "version": "2.0.0",
+  "description": "桌宠合集 PetHub · Windows 跨平台版（Electron）：薄肌 / 太对了 / 峰哥 / 果冻，整合自四个上游项目",
+  "main": "main.js",
+  "private": true,
+  "author": "PetHub contributors",
+  "license": "MIT",
+  "scripts": {
+    "copy-assets": "node scripts/copy-assets.js",
+    "prestart": "node scripts/copy-assets.js",
+    "start": "node scripts/launch.js",
+    "presmoke": "node scripts/copy-assets.js",
+    "smoke": "node scripts/launch.js --smoke",
+    "predist:win": "node scripts/copy-assets.js",
+    "dist:win": "bash build-win.sh"
+  },
+  "devDependencies": {
+    "electron": "^38.0.0",
+    "electron-builder": "^26.0.0"
+  },
+  "build": {
+    "appId": "local.pethub.app",
+    "productName": "PetHub",
+    "copyright": "整合自 ShaolanPet / SunPet / FengGe-Desktop-Pet / JellyPet，版权归原作者；JellyPet 无 LICENSE。代码 MIT，素材不在 MIT。",
+    "asar": true,
+    "compression": "maximum",
+    "directories": {
+      "output": "../dist/windows",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "lib/**/*",
+      "renderer/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "assets",
+        "to": "assets",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "../CREDITS.md",
+        "to": "CREDITS.md"
+      },
+      {
+        "from": "../NOTICE.md",
+        "to": "NOTICE.md"
+      },
+      {
+        "from": "../LICENSE",
+        "to": "LICENSE"
+      },
+      {
+        "from": "../docs/WINDOWS.md",
+        "to": "docs/WINDOWS.md"
+      },
+      {
+        "from": "../docs/PETPACK.md",
+        "to": "docs/PETPACK.md"
+      }
+    ],
+    "artifactName": "PetHub-${version}-Windows-x64.${ext}",
+    "win": {
+      "icon": "build/icon.png",
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "requestedExecutionLevel": "asInvoker"
+    },
+    "portable": {
+      "artifactName": "PetHub-${version}-Windows-x64.${ext}",
+      "requestExecutionLevel": "user"
+    }
+  }
+}

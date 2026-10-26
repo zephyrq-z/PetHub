@@ -37,14 +37,37 @@
 <p align="center"><img src="docs/preview-all.png" width="720" alt="四只桌宠在桌面上排成一排"></p>
 <p align="center"><img src="docs/preview-stage.png" width="720" alt="捧哏排列：四只的合影站位"></p>
 
-## 装
+## 下载哪个
 
-1. 双击 `PetHub-2.0.0.dmg`，把「桌宠合集.app」拖进「应用程序」。
+2.0.0 的 Release 一次提供三种：
+
+| 包 | 平台 | 说明 |
+| --- | --- | --- |
+| `PetHub-2.0.0-macOS-arm64.dmg` | macOS 14+ / Apple Silicon | 原生版，功能最全 |
+| `PetHub-2.0.0-Windows-x64.exe` | Windows 10/11 x64 | Electron 跨平台版，免安装 |
+| `PetHub-2.0.0-Source.zip` | 开发者 | macOS + Windows 源码、文档、示例 |
+
+详细差异和已知限制见 [docs/PLATFORMS.md](docs/PLATFORMS.md)。
+
+## 装（macOS）
+
+1. 双击 `PetHub-2.0.0-macOS-arm64.dmg`，把「桌宠合集.app」拖进「应用程序」。
 2. 第一次打开会弹「无法验证开发者」：右键 App → 打开。只是没买苹果签名，不是有毒。
 3. 四只会一起出现在屏幕右下角，排成一行；菜单栏右侧多一个「桌宠」。
 
 需要 **Apple Silicon Mac + macOS 14 或更新版本**。装之前那四个独立 App 不用卸载，但合集和它们不会互相接话；
 合集自己是完整的四个都齐了。
+
+## 装（Windows）
+
+1. 双击 `PetHub-2.0.0-Windows-x64.exe`。
+2. Windows SmartScreen 可能提示未知发布者：点「更多信息」→「仍要运行」。
+3. 四只桌宠会出现在右下角，系统托盘里会有「桌宠」菜单；右键托盘开设置 / 排列 / 自定义。
+
+Windows 版是 Electron 跨平台移植：四只、四步捧哏链、PetPack 导入都在；果冻手感和机身摇晃是简化版，
+不支持 macOS 那套可视化自定义编辑器（可以先在 macOS 版里做好包，再在 Windows 导入）。
+详细说明见 [docs/WINDOWS.md](docs/WINDOWS.md)；如果单文件 exe 被杀毒/SmartScreen 拦住，
+可以用 Release 里的 `PetHub-2.0.0-Windows-x64.zip` 免安装版。
 
 ## 怎么玩
 

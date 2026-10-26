@@ -1,0 +1,167 @@
+/* 桌宠窗口：整窗透明，只有头像 / 字幕 / 标志有内容 */
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+}
+
+body {
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: default;
+}
+
+.root {
+  position: absolute;
+  inset: 0;
+}
+
+/* hidden 属性要压过 #jelly-root { display:flex } / #audio-root 的 ID 规则 */
+.root[hidden] {
+  display: none !important;
+}
+
+/* ---- 语音桌宠 ---- */
+
+#audio-root {
+  padding: var(--inset-y, 8px) var(--inset-x, 8px) 0;
+  box-sizing: border-box;
+}
+
+.face {
+  width: 100%;
+  height: auto;
+  display: block;
+  pointer-events: none;
+  -webkit-user-drag: none;
+}
+
+.caption {
+  position: absolute;
+  left: 3px;
+  right: 3px;
+  bottom: calc(var(--caption-band, 44px) - 38px);
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s ease-out;
+}
+
+.caption.show {
+  opacity: 1;
+}
+
+#caption-text {
+  max-width: 100%;
+  background: var(--caption-bg, rgba(0, 0, 0, 0.76));
+  color: #fff;
+  font-family: -apple-system, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+  font-size: var(--caption-font, 13px);
+  font-weight: 500;
+  border-radius: var(--caption-radius, 9px);
+  padding: 4px 10px;
+  line-height: 1.25;
+  max-height: 34px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-align: center;
+  word-break: break-word;
+}
+
+/* 说话动画：薄肌/峰哥竖向压扁，太对了左右摇（对应 macOS 的两套动画） */
+#audio-root.speaking.squash .face {
+  transform-origin: bottom center;
+  animation: pethub-squash 0.5s ease-in-out infinite;
+}
+
+#audio-root.speaking.tilt .face {
+  transform-origin: center 88%;
+  animation: pethub-tilt 0.9s ease-in-out infinite;
+}
+
+@keyframes pethub-squash {
+  0%,
+  100% {
+    transform: scaleY(1);
+  }
+  30% {
+    transform: scaleY(0.88);
+  }
+  60% {
+    transform: scaleY(1.02);
+  }
+}
+
+@keyframes pethub-tilt {
+  0%,
+  100% {
+    transform: rotate(0deg) translateY(0);
+  }
+  25% {
+    transform: rotate(-3.2deg) translateY(-2px);
+  }
+  65% {
+    transform: rotate(3.2deg) translateY(-3px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #audio-root.speaking.squash .face,
+  #audio-root.speaking.tilt .face {
+    animation: none;
+  }
+}
+
+/* ---- 果冻 ---- */
+
+#jelly-root {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: visible;
+}
+
+.jelly-icon {
+  width: 57.1429%; /* 窗口 = 图标 × 1.75，中间留给形变 */
+  height: 57.1429%;
+  object-fit: contain;
+  pointer-events: none;
+  -webkit-user-drag: none;
+  will-change: transform;
+  transform: translate(0, 0) rotate(0deg) scale(1, 1);
+  transition: transform 0.35s cubic-bezier(0.22, 1.4, 0.36, 1);
+}
+
+#jelly-root.dragging .jelly-icon {
+  transition: none;
+}
+
+#jelly-root.pressed .jelly-icon {
+  transform: scale(1.1, 1.1);
+}
+
+#jelly-root.rebound .jelly-icon {
+  transition: transform 0.45s cubic-bezier(0.22, 1.4, 0.36, 1);
+}
+
+/* ---- 版权声明（DOM 里必须保留，但不显示在桌面上） ---- */
+
+.credit {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+}

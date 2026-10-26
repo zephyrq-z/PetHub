@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:"
+    />
+    <title>桌宠合集 · 设置（整合自 ShaolanPet / SunPet / FengGe-Desktop-Pet / JellyPet）</title>
+    <link rel="stylesheet" href="settings.css" />
+  </head>
+  <body>
+    <header class="hero">
+      <div class="hero-row">
+        <h1>桌宠合集 <span class="version" id="version">2.0.0</span></h1>
+        <span class="badge">Windows · Electron</span>
+      </div>
+      <p class="subtitle">
+        薄肌 · 太对了 · 峰哥 · 果冻，四只桌宠住在一个 App 里。点一下就说，凑在一起会接话。
+      </p>
+      <p class="subtitle dim">
+        这个窗口管全部设置；托盘图标右键也能打开同样的开关。所有设置保存在本机
+        <code>settings.json</code>，App 不联网。
+      </p>
+    </header>
+
+    <main>
+      <section class="card">
+        <h2>显示 / 隐藏</h2>
+        <div id="visibility-list" class="visibility-list"></div>
+        <div class="row buttons">
+          <button id="show-all" class="btn">全部显示</button>
+          <button id="hide-all" class="btn">全部隐藏</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>排列</h2>
+        <p class="hint">「全部归位」回到屏幕右下角的标准站位；「紧凑排列」把间距收拢；「捧哏排列」摆成合影站位。</p>
+        <div class="row buttons">
+          <button id="arrange-default" class="btn">全部归位（默认）</button>
+          <button id="arrange-compact" class="btn">紧凑排列</button>
+          <button id="arrange-stage" class="btn">捧哏排列（合影）</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>大小</h2>
+        <div class="row slider-row">
+          <label for="global-scale">四只一起</label>
+          <input id="global-scale" type="range" min="50" max="180" step="1" value="100" />
+          <output id="global-scale-value">100%</output>
+        </div>
+        <label class="check">
+          <input id="link-size" type="checkbox" />
+          <span>大小联动：拖任意一只的大小滑块，另外三只按同一比例一起变</span>
+        </label>
+        <div id="size-list" class="size-list"></div>
+      </section>
+
+      <section class="card">
+        <h2>联动</h2>
+        <label class="check">
+          <input id="relay-enabled" type="checkbox" />
+          <span>捧哏联动：点薄肌起头 → 太对了 → 峰哥 → 太对了，第四句收住</span>
+        </label>
+        <label class="check">
+          <input id="group-drag" type="checkbox" />
+          <span>绑定相对位置：拖任意一只语音桌宠，四只保持队形一起移动</span>
+        </label>
+        <p class="hint">
+          薄肌只说不接；太对了接薄肌 / 峰哥；峰哥只在根是薄肌时接太对了。自定义角色只替换薄肌槽位，
+          四步链的 root 仍然是薄肌。
+        </p>
+      </section>
+
+      <section class="card">
+        <h2>自定义桌宠（替换薄肌）</h2>
+        <p class="status" id="custom-status">当前：原版薄肌</p>
+        <p class="hint">
+          导入一个包含 <code>petpack.json</code> 的文件夹。校验通过后复制到本机
+          <code>HeadPet/</code>，立刻替换薄肌槽位；太对了 / 峰哥 / 果冻不变，四步捧哏链也不变。
+        </p>
+        <div class="row buttons">
+          <button id="import-pack" class="btn primary">导入 petpack.json 文件夹…</button>
+          <button id="restore-builtin" class="btn">恢复原版薄肌</button>
+          <button id="open-pack-folder" class="btn">打开内容包文件夹</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>关于 / 版权</h2>
+        <p class="credit-line" id="credit-line">
+          整合自 ShaolanPet / SunPet / FengGe-Desktop-Pet / JellyPet，版权归原作者；JellyPet 无 LICENSE。
+        </p>
+        <p class="hint" id="credit-detail"></p>
+        <ul class="upstream" id="upstream-list"></ul>
+        <div class="row buttons">
+          <button id="open-credits" class="btn">打开 CREDITS.md</button>
+          <button id="about" class="btn">关于对话框</button>
+        </div>
+        <p class="hint">
+          音频 / 头像 / 标志版权归原权利人，不在 MIT 范围内，不商用。用户自己导入的内容归用户所有，
+          App 不上传、不联网。
+        </p>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <span id="footer-credit">
+        整合自 ShaolanPet / SunPet / FengGe-Desktop-Pet / JellyPet，版权归原作者；JellyPet 无 LICENSE。
+      </span>
+      <span class="dim" id="footer-version">PetHub 2.0.0 · Windows</span>
+    </footer>
+
+    <script src="settings.js"></script>
+  </body>
+</html>

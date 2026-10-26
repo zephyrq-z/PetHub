@@ -138,3 +138,20 @@
 - [ ] PR 描述写清“改了什么、怎么验证的”，贴 `--self-test` / `--chain-test` 最后一行
 
 提交信息用中文一句话概括改动；发版本时由维护者统一改版本号、跑打包。
+
+## Windows（Electron）版
+
+Windows 版在 [`windows/`](windows/) 目录，复用同一批 `Assets/` 和同一套 PetPack 格式：
+
+```bash
+cd windows
+export HTTPS_PROXY=http://127.0.0.1:7897 HTTP_PROXY=http://127.0.0.1:7897  # 如果你在墙内
+npm install
+npm run smoke        # 无人工交互跑四窗口 + 四步链 + 设置窗，最后一行必须是 PASS
+./build-win.sh       # 产出 dist/windows/PetHub-<版本>-Windows-x64.exe / .zip / .sha256
+```
+
+- 只在 macOS 上交叉构建过；Windows 实机行为（透明窗口/置顶/DPI/托盘）需要真机复核。
+- 依赖只有 `electron` / `electron-builder`，不要引入框架或联网运行时。
+- 改动联动逻辑时，`npm run smoke` 里要能看到 `step 1/4 … step 4/4` 且 root 正确。
+- 用户文档：[docs/WINDOWS.md](docs/WINDOWS.md)；开发细节：[windows/README.md](windows/README.md)。

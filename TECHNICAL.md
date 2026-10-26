@@ -1,4 +1,8 @@
-# 桌宠合集 · 技术文档（v2.0.0）
+# 桌宠合集 · 技术文档（v2.0.0 · macOS 原生版）
+
+> Windows 跨平台版（Electron）不在本文档的 Swift 代码里，单独看
+> [docs/WINDOWS.md](docs/WINDOWS.md)、[docs/PLATFORMS.md](docs/PLATFORMS.md) 和 [`windows/`](windows/)。
+
 
 只想装上玩的话看 [README](README.md)。这一份写给要自己编译、改代码、加角色，或者被派来验证这个 App 的 agent。
 分层与内核复用看 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)，内容包格式看 [docs/PETPACK.md](docs/PETPACK.md)，

@@ -5,6 +5,8 @@
 素材权利在 [NOTICE.md](NOTICE.md)，上游来源在 [docs/UPSTREAM.md](docs/UPSTREAM.md)。
 
 这个仓库是「桌宠合集」v2.0：薄肌、太对了、峰哥、果冻四只桌宠，住在**一个 App、一个进程**里。
+macOS 原生版在 `Sources/` + `Assets/`；Windows 跨平台版在 `windows/`（Electron，复用同一批素材和 PetPack，
+见 [docs/PLATFORMS.md](docs/PLATFORMS.md)）。
 代码分两层：`Sources/PetKit/`（可复用内核）+ `Sources/PetHub/`（成品 App）。
 薄肌可以被用户的 PetPack 内容包替换，其余三只不变。
 
