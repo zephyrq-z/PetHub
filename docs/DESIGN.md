@@ -72,6 +72,13 @@ protocol PetHost: AnyObject {
     func applySizeScale(_ scale: Double)
     var visualWidth: CGFloat { get }      // 紧凑排列算间距用
     func moveToRow(left: CGFloat, bottom: CGFloat)
+    func bringToFront()
+    var windowFrame: NSRect { get }
+    func moveBy(dx: CGFloat, dy: CGFloat)  // 被拖的那只自己按增量平移
+    func beginGroupDrag()                 // 其余三只记下基准位置
+    func setGroupDragOffset(dx: CGFloat, dy: CGFloat)  // 基准 + 累计偏移，避免量化漂移
+    func endGroupDrag()
+    func persistPosition()
 }
 
 protocol PetHubContext: AnyObject {
@@ -82,6 +89,10 @@ protocol PetHubContext: AnyObject {
     func quitApp()
     var linkSizeEnabled: Bool { get }
     func petSizeScaleChanged(_ id: PetID, scale: Double)
+    var groupDragEnabled: Bool { get }
+    func petDragBegan(_ id: PetID)
+    func petDragged(_ id: PetID, dx: CGFloat, dy: CGFloat)
+    func petDragEnded(_ id: PetID)
 }
 
 struct PetSpeech: Equatable { let from: PetID; let clipID: Int; let label: String
@@ -200,6 +211,8 @@ caption     = (3, height - captionBand + 4, width - 6, 34)
   大小联动[✓]（默认开，持久化到 hub.linkSize；每只菜单的滑块是否同步四只）
   大小滑块（50%–180%，总菜单永远四只一起）
   全部显示 / 全部隐藏 / 全部归位 / 紧凑排列（约 6pt 间距、16pt 边距）
+  捧哏排列（合影）：薄肌左 / 太对了抬高 / 峰哥右 / 果冻右肩后，自动绑定相对位置
+  绑定相对位置[✓]（持久化 hub.groupDrag；拖一只语音桌宠四只一起平移）
   ───
   关于桌宠合集 / 退出桌宠合集
   ```
@@ -207,14 +220,16 @@ caption     = (3, height - captionBand + 4, width - 6, 34)
 - 关于面板：版本、四只句数、上游仓库链接、素材版权声明
 - CLI（`applicationDidFinishLaunching` 里分流，跑完 `exit`）：
   - `--self-test`：四只 controller 的 `selfTest` + 主控断言（relay 机制、三只 reaction 策略、
-    菜单结构、大小滑块（总菜单/单只真实 action 路径）、大小联动、紧凑排列、显隐、默认布局：
-    三只语音窗口 + 果冻可见图标互不重叠且完整落在屏幕可见区），
+    菜单结构、大小滑块（总菜单/单只真实 action 路径）、大小联动、紧凑排列、捧哏排列、
+    绑定相对位置（拖一只四只平移）、显隐、默认布局：三只语音窗口 + 果冻可见图标
+    互不重叠且完整落在屏幕可见区），
     最后一行 `PASS`，失败 `FAIL: [...]`，退出码 1
   - `--chain-test`：打开 trace、静音、模拟点薄肌，等 18 秒（全程约 21 秒；偶发丢句自动重试一次），校验口头记录是
     `[shaolan hop0 root shaolan, sunpet hop1, fengge hop2, sunpet hop3]` 且没有第五句 → `PASS`
   - `--dump-state`：每只一行 `id visible=... size=... pos=...`，加 `relay=on/off`
   （`--diagnostic` 类模式只读：不写偏好、不自动开机身摇晃）
-  - `--preview <dir>`：每只写 `preview-<id>.png`（2x），退出
+  - `--preview <dir>`：四只各写 `preview-<id>.png`（2x），再写 `preview-all.png`（一排）和
+    `preview-stage.png`（捧哏排列合影），共 6 张，退出
   - `--trace`：**正常启动**，额外把 relay 和桌宠 trace 打到 stdout（格式 `[relay] <时间戳> ...`、
     `[trace] ...`）；受单实例限制、会写偏好
 - `--self-test` / `--chain-test` / `--dump-state` / `--preview` 不做单实例拦截；正常启动（含 `--trace`）做
@@ -230,13 +245,13 @@ caption     = (3, height - captionBand + 4, width - 6, 34)
 4. 拷贝 `Assets/shaolan|sun|fengge|jelly` → `Contents/Resources/<同名>`，
    `Assets/AppIcon.icns` → Resources，`LICENSE`+`licenses/` → Resources
 5. Info.plist：CFBundleExecutable=PetHub、CFBundleIdentifier=local.pethub.app、
-   CFBundleName/DisplayName=桌宠合集、ShortVersion=1.2.0、Version=1、LSMinimumSystemVersion=14.0、
+   CFBundleName/DisplayName=桌宠合集、ShortVersion=1.3.0、Version=1、LSMinimumSystemVersion=14.0、
    LSUIElement=true、NSHighResolutionCapable=true、CFBundleIconFile=AppIcon
 6. `xattr -cr`，`codesign --force --sign -`
 7. 跑 `--self-test`，最后一行必须是 PASS（`--no-self-test` 可跳过）
 8. `--package`：`ditto` 出 zip；stage 目录放 app + `Applications` 软链；
-   `hdiutil create -volname 桌宠合集 -srcfolder stage -format UDZO dist/PetHub-1.2.0.dmg`；
-   `shasum -a 256` 写 `PetHub-1.2.0.sha256`
+   `hdiutil create -volname 桌宠合集 -srcfolder stage -format UDZO dist/PetHub-1.3.0.dmg`；
+   `shasum -a 256` 写 `PetHub-1.3.0.sha256`
 
 `install.sh`：`--build` 编译并装进 /Applications、启动；`--uninstall` 退出并删除；默认从 `build/` 装。
 
@@ -268,5 +283,7 @@ claude-mark.png）排成 2×2，画进 1024×1024 圆角底板（浅色渐变/�
 - [ ] 点每只都能出声/形变；右键菜单完整；隐藏/显示/全部归位可用
 - [ ] 大小滑块：50%–180% 无级变化；总菜单拖一次四只一起变；每只菜单滑块受「大小联动」控制
 - [ ] 紧凑排列：一键约 6pt 间距、16pt 边距贴右下角，四只不重叠且在屏内
+- [ ] 捧哏排列：按合影站位摆好（太对了抬高、左中右顺序、果冻右肩后、前后层次），自动绑定
+- [ ] 绑定相对位置：拖任意语音桌宠四只保持队形平移；关掉后只动被拖的那只
 - [ ] `hdiutil verify dist/*.dmg` 通过；挂载后 `桌宠合集.app` 能启动并自检
 - [ ] README/TECHNICAL/NOTICE 与实现一致，无夸大

@@ -21,6 +21,11 @@ protocol PetHubContext: AnyObject {
     /// 「大小联动」总开关：打开时改任意一只的大小会同步到另外三只。
     var linkSizeEnabled: Bool { get }
     func petSizeScaleChanged(_ id: PetID, scale: Double)
+    /// 「绑定相对位置」：拖任意语音桌宠时，其余三只按相同增量整体移动。
+    var groupDragEnabled: Bool { get }
+    func petDragBegan(_ id: PetID)
+    func petDragged(_ id: PetID, dx: CGFloat, dy: CGFloat)
+    func petDragEnded(_ id: PetID)
 }
 
 /// 大小滑块的统一范围：相对每只默认大小的 50%–180%。
@@ -64,6 +69,19 @@ protocol PetHost: AnyObject {
     var visualWidth: CGFloat { get }
     /// 把这只放到一排里的指定左边界/底边（语音桌宠按窗口原点，果冻按图标中心换算）。
     func moveToRow(left: CGFloat, bottom: CGFloat)
+    /// 提到最前（捧哏排列要按前后层次叠放）。
+    func bringToFront()
+    /// 窗口 frame，复合预览和排查用。
+    var windowFrame: NSRect { get }
+    /// 绑定相对位置时，按增量整体平移（被拖的那只自己用）。
+    func moveBy(dx: CGFloat, dy: CGFloat)
+    /// 绑定拖动开始：记下当前位置作为基准，之后用“基准 + 总偏移”绝对定位，
+    /// 避免逐步读回被 window server 量化过的 frame 造成累积漂移。
+    func beginGroupDrag()
+    func setGroupDragOffset(dx: CGFloat, dy: CGFloat)
+    func endGroupDrag()
+    /// 拖完/需要时落盘位置。
+    func persistPosition()
 }
 
 extension PetHost {
@@ -77,4 +95,11 @@ extension PetHost {
     func applySizeScale(_ scale: Double) {}
     var visualWidth: CGFloat { panelSize.width }
     func moveToRow(left: CGFloat, bottom: CGFloat) {}
+    func bringToFront() {}
+    var windowFrame: NSRect { .zero }
+    func moveBy(dx: CGFloat, dy: CGFloat) {}
+    func beginGroupDrag() {}
+    func setGroupDragOffset(dx: CGFloat, dy: CGFloat) {}
+    func endGroupDrag() {}
+    func persistPosition() {}
 }

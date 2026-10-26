@@ -11,15 +11,20 @@ final class PetHubApp: NSObject, NSApplicationDelegate, PetHubContext {
 
     private(set) var relayEnabled = true
     private(set) var linkSizeEnabled = true
+    private(set) var groupDragEnabled = false
 
     private let testing = CommandLine.arguments.contains("--self-test")
     private let chainTesting = CommandLine.arguments.contains("--chain-test")
     private let tracing = CommandLine.arguments.contains("--trace")
     private let dumping = CommandLine.arguments.contains("--dump-state")
     private let previewPath = PetHubApp.argumentValue(for: "--preview")
+    /// 自检/诊断模式只读：不把开关和位置写进偏好。
+    private var diagnostic: Bool { testing || chainTesting || dumping || previewPath != nil }
 
     private var speechLog: [PetSpeech] = []
     private var chainAttempt = 0
+    private var groupDragTotal = CGSize.zero
+    private var groupDragActive = false
 
     // MARK: 生命周期
 
@@ -32,6 +37,7 @@ final class PetHubApp: NSObject, NSApplicationDelegate, PetHubContext {
 
         relayEnabled = hubDefaults.object(forKey: "hub.relayEnabled") as? Bool ?? true
         linkSizeEnabled = hubDefaults.object(forKey: "hub.linkSize") as? Bool ?? true
+        groupDragEnabled = hubDefaults.object(forKey: "hub.groupDrag") as? Bool ?? false
         relay.isEnabled = relayEnabled
         relay.traceEnabled = tracing || chainTesting
 
@@ -137,6 +143,33 @@ final class PetHubApp: NSObject, NSApplicationDelegate, PetHubContext {
         }
     }
 
+    func petDragBegan(_ id: PetID) {
+        guard groupDragEnabled else { return }
+        groupDragTotal = .zero
+        groupDragActive = true
+        for other in PetLayout.order where other != id {
+            pets[other]?.beginGroupDrag()
+        }
+    }
+
+    func petDragged(_ id: PetID, dx: CGFloat, dy: CGFloat) {
+        guard groupDragEnabled else { return }
+        if !groupDragActive { petDragBegan(id) }
+        groupDragTotal.width += dx
+        groupDragTotal.height += dy
+        for other in PetLayout.order where other != id {
+            pets[other]?.setGroupDragOffset(dx: groupDragTotal.width, dy: groupDragTotal.height)
+        }
+    }
+
+    func petDragEnded(_ id: PetID) {
+        guard groupDragEnabled else { return }
+        for other in PetLayout.order where other != id {
+            pets[other]?.endGroupDrag()
+        }
+        groupDragActive = false
+    }
+
     @objc func quitApp() {
         NSApp.terminate(nil)
     }
@@ -209,6 +242,10 @@ final class PetHubApp: NSObject, NSApplicationDelegate, PetHubContext {
         menu.addItem(menuItem("全部隐藏", #selector(hideAllPets)))
         menu.addItem(menuItem("全部归位", #selector(resetAllPositions)))
         menu.addItem(menuItem("紧凑排列（一键收拢）", #selector(compactArrange)))
+        menu.addItem(menuItem("捧哏排列（合影）", #selector(stageArrange)))
+        let bindItem = menuItem("绑定相对位置（拖一只，四只一起动）", #selector(toggleGroupDrag))
+        bindItem.state = groupDragEnabled ? .on : .off
+        menu.addItem(bindItem)
         menu.addItem(.separator())
         menu.addItem(menuItem("关于桌宠合集", #selector(showAbout)))
         menu.addItem(menuItem("退出桌宠合集", #selector(quitApp)))
@@ -232,6 +269,11 @@ final class PetHubApp: NSObject, NSApplicationDelegate, PetHubContext {
         hubDefaults.set(linkSizeEnabled, forKey: "hub.linkSize")
     }
 
+    @objc private func toggleGroupDrag() {
+        groupDragEnabled.toggle()
+        if !diagnostic { hubDefaults.set(groupDragEnabled, forKey: "hub.groupDrag") }
+    }
+
     /// 总菜单的滑块：不分联动开关，直接四只一起设。
     private func applyGlobalSizeScale(_ scale: Double) {
         for pet in pets.values { pet.applySizeScale(scale) }
@@ -244,9 +286,21 @@ final class PetHubApp: NSObject, NSApplicationDelegate, PetHubContext {
         return scales.allSatisfy { abs($0 - first) < 0.01 } ? first : nil
     }
 
+    /// 这排桌宠当前所在的屏幕。App 不活跃时 NSScreen.main 可能跳到副屏，
+    /// 排列要跟着宠物走，不能凭空换一块屏。
+    private func arrangementScreen() -> NSScreen? {
+        if let frame = pets[.shaolan]?.windowFrame, frame.width > 0 {
+            let target = NSPoint(x: frame.midX, y: frame.midY)
+            if let screen = NSScreen.screens.first(where: { $0.visibleFrame.contains(target) }) {
+                return screen
+            }
+        }
+        return PetLayout.screen()
+    }
+
     /// 一键紧凑排列：间距从 36 收到 6，边距 24 收到 16，贴右下角排一行。
     @objc private func compactArrange() {
-        guard let screen = PetLayout.screen() else { return }
+        guard let screen = arrangementScreen() else { return }
         let gap: CGFloat = 6
         let margin: CGFloat = 16
         let widths = PetLayout.order.map { pets[$0]?.visualWidth ?? 0 }
@@ -258,6 +312,42 @@ final class PetHubApp: NSObject, NSApplicationDelegate, PetHubContext {
             pets[id]?.moveToRow(left: x, bottom: bottom)
             x += widths[index] + gap
         }
+    }
+
+    /// 合影站位：薄肌左、太对了中间抬高、峰哥右、果冻缩到峰哥右肩后。
+    @objc private func stageArrange() {
+        let scales: [PetID: Double] = [.shaolan: 1.2, .sunpet: 1.4, .fengge: 1.2, .jelly: 0.65]
+        for (id, scale) in scales { pets[id]?.applySizeScale(scale) }
+        guard let screen = arrangementScreen() else { return }
+        let visible = screen.visibleFrame
+        let gap: CGFloat = 6
+        let base = visible.minY + 36
+        let firstWidth = pets[.shaolan]?.visualWidth ?? 0
+        let secondWidth = pets[.sunpet]?.visualWidth ?? 0
+        let thirdWidth = pets[.fengge]?.visualWidth ?? 0
+        let jellySide = pets[.jelly]?.visualWidth ?? 0
+        let sceneWidth = firstWidth + gap + secondWidth + gap + thirdWidth
+        let left = visible.midX - sceneWidth / 2
+        let firstHeight = pets[.shaolan]?.panelSize.height ?? 300
+        let raise = max(56, firstHeight * 0.18)
+
+        pets[.shaolan]?.moveToRow(left: left, bottom: base)
+        pets[.sunpet]?.moveToRow(left: left + firstWidth + gap, bottom: base + raise)
+        pets[.fengge]?.moveToRow(left: left + firstWidth + gap + secondWidth + gap, bottom: base)
+
+        let fenggeHeight = pets[.fengge]?.panelSize.height ?? 300
+        let jellyCenterX = left + firstWidth + gap + secondWidth + gap + thirdWidth - jellySide * 0.55
+        let jellyCenterY = base + fenggeHeight * 0.68
+        pets[.jelly]?.moveToRow(left: jellyCenterX - jellySide / 2,
+                                bottom: jellyCenterY - jellySide / 2)
+
+        // 后放的在上层：果冻在最后，薄肌在最前，和合影的前后关系一致。
+        for id in [PetID.jelly, .sunpet, .fengge, .shaolan] where isPetVisible(id) {
+            pets[id]?.bringToFront()
+        }
+        // 合影站好之后默认绑定相对位置：拖任意一只，四只保持队形整体走。
+        groupDragEnabled = true
+        if !diagnostic { hubDefaults.set(true, forKey: "hub.groupDrag") }
     }
 
     @objc private func showAllPets() {
@@ -278,7 +368,7 @@ final class PetHubApp: NSObject, NSApplicationDelegate, PetHubContext {
             return "\(id.title) \(audio.clipCount) 句"
         }.joined(separator: " · ")
         let alert = NSAlert()
-        alert.messageText = "桌宠合集 1.2.0"
+        alert.messageText = "桌宠合集 1.3.0"
         alert.informativeText = """
         薄肌 · 太对了 · 峰哥 · 果冻，四只桌宠住在同一个 App 里。
         \(counts)
@@ -304,7 +394,7 @@ final class PetHubApp: NSObject, NSApplicationDelegate, PetHubContext {
     }
 
     private func dumpState() {
-        print("version=1.2.0 relay=\(relayEnabled ? "on" : "off") pets=\(pets.count)")
+        print("version=1.3.0 relay=\(relayEnabled ? "on" : "off") pets=\(pets.count)")
         for id in PetLayout.order {
             print(pets[id]?.stateDescription ?? "\(id.rawValue) missing")
         }
@@ -334,8 +424,60 @@ final class PetHubApp: NSObject, NSApplicationDelegate, PetHubContext {
         let composite = makeComposite(rendered)
         _ = writePNG(composite, to: folder.appendingPathComponent("preview-all.png"))
         print("preview \(folder.appendingPathComponent("preview-all.png").path)")
+        if let stage = makeStageComposite() {
+            _ = writePNG(stage, to: folder.appendingPathComponent("preview-stage.png"))
+            print("preview \(folder.appendingPathComponent("preview-stage.png").path)")
+        }
         fflush(stdout)
         exit(0)
+    }
+
+    /// 可见区域：果冻按 128 左右的图标算，语音桌宠按整个窗口算。
+    private func visibleFrameFor(_ id: PetID) -> NSRect {
+        if let jelly = pets[id] as? JellyPetController {
+            let side = jelly.iconSide
+            return NSRect(x: jelly.center.x - side / 2, y: jelly.center.y - side / 2,
+                          width: side, height: side)
+        }
+        return pets[id]?.windowFrame ?? .zero
+    }
+
+    /// 按合影站位离屏渲染一张合影，用来验证新排列的层次和留白。
+    private func makeStageComposite() -> NSImage? {
+        stageArrange()
+        let stageOrder: [PetID] = [.jelly, .sunpet, .fengge, .shaolan]
+        let entries: [(NSImage, NSRect)] = stageOrder.compactMap { id in
+            guard let image = pets[id]?.previewImage() else { return nil }
+            return (image, pets[id]?.windowFrame ?? .zero)
+        }
+        guard entries.count == PetLayout.order.count else { return nil }
+
+        var bounds = visibleFrameFor(PetLayout.order[0])
+        for id in PetLayout.order.dropFirst() {
+            bounds = bounds.union(visibleFrameFor(id))
+        }
+        bounds = bounds.insetBy(dx: -30, dy: -30)
+        let canvasSize = NSSize(width: 1440, height: 720)
+        let scale = min(canvasSize.width / bounds.width, canvasSize.height / bounds.height)
+        let offset = NSPoint(x: (canvasSize.width - bounds.width * scale) / 2,
+                             y: (canvasSize.height - bounds.height * scale) / 2)
+
+        let canvas = NSImage(size: canvasSize)
+        canvas.lockFocus()
+        let gradient = NSGradient(colors: [
+            NSColor(calibratedRed: 0.16, green: 0.18, blue: 0.24, alpha: 1),
+            NSColor(calibratedRed: 0.07, green: 0.08, blue: 0.11, alpha: 1),
+        ])
+        gradient?.draw(in: NSRect(origin: .zero, size: canvasSize), angle: -90)
+        for (image, frame) in entries {
+            let rect = NSRect(x: offset.x + (frame.minX - bounds.minX) * scale,
+                              y: offset.y + (frame.minY - bounds.minY) * scale,
+                              width: frame.width * scale,
+                              height: frame.height * scale)
+            image.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1)
+        }
+        canvas.unlockFocus()
+        return canvas
     }
 
     private func writePNG(_ image: NSImage, to url: URL) -> Bool {
@@ -517,6 +659,70 @@ final class PetHubApp: NSObject, NSApplicationDelegate, PetHubContext {
             check(false, "菜单里找不到紧凑排列")
         }
         for pet in pets.values { pet.moveToDefaultPosition() }
+
+        // 捧哏排列：按合影站位叠放（太对了抬高、果冻缩到峰哥右肩后）。
+        for pet in pets.values { pet.applySizeScale(1.0) }
+        if let stage = makeHubMenu().items.first(where: { $0.title == "捧哏排列（合影）" }),
+           let action = stage.action {
+            NSApp.sendAction(action, to: stage.target, from: stage)
+            let expected: [PetID: Double] = [.shaolan: 1.2, .sunpet: 1.4, .fengge: 1.2, .jelly: 0.65]
+            check(PetLayout.order.allSatisfy { abs((pets[$0]?.sizeScale ?? 0) - (expected[$0] ?? 0)) < 0.03 },
+                  "捧哏排列：四只切到合影比例")
+            if let a = visibleFrame(of: .shaolan),
+               let b = visibleFrame(of: .sunpet),
+               let c = visibleFrame(of: .fengge),
+               let d = visibleFrame(of: .jelly),
+               let screen = PetLayout.screen() {
+                check(b.minY > a.minY + 40, "捧哏排列：太对了抬到高位")
+                check(a.maxX <= b.minX + 1 && b.maxX <= c.minX + 1,
+                      "捧哏排列：薄肌 → 太对了 → 峰哥 从左到右")
+                check(d.intersects(c), "捧哏排列：果冻缩在峰哥右肩后")
+                check([a, b, c, d].allSatisfy { screen.visibleFrame.contains($0) },
+                      "捧哏排列：四只都在屏幕内")
+            }
+        } else {
+            check(false, "菜单里找不到捧哏排列")
+        }
+        check(groupDragEnabled, "捧哏排列后自动绑定相对位置")
+
+        // 绑定相对位置：拖一只，其余三只按同样增量整体走；关掉后各走各的。
+        let beforeGroup = PetLayout.order.map { visibleFrameFor($0) }
+        (pets[.shaolan] as? AudioPetController)?.simulateDragForTesting(dx: 30, dy: -12)
+        var groupMoved = true
+        for (index, id) in PetLayout.order.enumerated() {
+            let after = visibleFrameFor(id)
+            if abs(after.minX - beforeGroup[index].minX - 30) > 0.6
+                || abs(after.minY - beforeGroup[index].minY + 12) > 0.6 {
+                groupMoved = false
+            }
+        }
+        check(groupMoved, "绑定相对位置：拖薄肌，四只一起平移")
+        groupDragEnabled = false
+        let beforeUnbound = PetLayout.order.map { visibleFrameFor($0) }
+        (pets[.shaolan] as? AudioPetController)?.simulateDragForTesting(dx: 15, dy: 0)
+        check(abs(visibleFrameFor(.sunpet).minX - beforeUnbound[1].minX) < 0.6,
+              "关掉绑定后只有被拖的那只动")
+        groupDragEnabled = true
+
+        // 小数步长不累计漂移：4 步 × 2.5 应精确整体 +10。
+        let beforeFraction = PetLayout.order.map { visibleFrameFor($0) }
+        petDragBegan(.shaolan)
+        for _ in 0..<4 { petDragged(.shaolan, dx: 2.5, dy: 2.5) }
+        petDragEnded(.shaolan)
+        var fractionOK = true
+        for (index, id) in PetLayout.order.enumerated() where id != .shaolan {
+            let after = visibleFrameFor(id)
+            if abs(after.minX - beforeFraction[index].minX - 10) > 0.15
+                || abs(after.minY - beforeFraction[index].minY - 10) > 0.15 {
+                fractionOK = false
+            }
+        }
+        check(fractionOK, "绑定拖动小数步长不累积漂移（4×2.5 = +10）")
+
+        for pet in pets.values {
+            pet.applySizeScale(1.0)
+            pet.moveToDefaultPosition()
+        }
 
         // 默认布局：三只语音窗口 + 果冻的可见图标，互不重叠且都在屏幕可见区里。
         for id in PetLayout.order {

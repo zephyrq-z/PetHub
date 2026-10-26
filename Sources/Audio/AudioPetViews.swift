@@ -27,7 +27,9 @@ final class AudioPetView: NSView {
 
     private var initialMouse = NSPoint.zero
     private var initialWindow = NSPoint.zero
+    private var lastMouse = NSPoint.zero
     private var dragged = false
+    private var groupDragStarted = false
 
     private var animationTimer: Timer?
     private var phase = 0.0
@@ -86,7 +88,9 @@ final class AudioPetView: NSView {
     override func mouseDown(with event: NSEvent) {
         initialMouse = window?.convertPoint(toScreen: event.locationInWindow) ?? NSEvent.mouseLocation
         initialWindow = window?.frame.origin ?? .zero
+        lastMouse = initialMouse
         dragged = false
+        groupDragStarted = false
     }
 
     override func mouseDragged(with event: NSEvent) {
@@ -95,12 +99,25 @@ final class AudioPetView: NSView {
         let dy = current.y - initialMouse.y
         if hypot(dx, dy) > 4 { dragged = true }
         if dragged {
+            if !groupDragStarted {
+                groupDragStarted = true
+                owner?.groupDragBegan()
+            }
             window?.setFrameOrigin(NSPoint(x: initialWindow.x + dx, y: initialWindow.y + dy))
+            let stepX = current.x - lastMouse.x
+            let stepY = current.y - lastMouse.y
+            lastMouse = current
+            owner?.groupDragMoved(dx: stepX, dy: stepY)
         }
     }
 
     override func mouseUp(with event: NSEvent) {
-        if dragged { owner?.savePosition() } else { owner?.playNext() }
+        if dragged {
+            owner?.savePosition()
+            owner?.groupDragEnded()
+        } else {
+            owner?.playNext()
+        }
     }
 
     override func rightMouseDown(with event: NSEvent) {

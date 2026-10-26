@@ -606,3 +606,141 @@ dist/ 只有 PetHub-1.2.0.{dmg,zip,sha256}；1.1.0 在 /tmp/PetHub-1.1.0-archive
 | 7 | 报告追加 + complete task-5 | 本节即追加内容 |
 
 **1.2.0 增量验收结论：PASS。无阻塞缺陷；交付物可发布。**
+
+---
+
+# 1.3.0「捧哏排列（合影）+ 绑定相对位置」增量验收（2026-10-26 17:00–19:17）
+
+> 本节是 1.2.0 之后的增量验收；上方 1.0.0/1.1.0/1.2.0 历史章节原样保留。最终验证对象为 **17:30 冻结的干净构建**：`build/桌宠合集.app`（604272 字节）与 `dist/PetHub-1.3.0.dmg`（sha256 `8a9d627a…`）。
+> 期间发生一次环境冲突：另一个会话在 17:13 往 `Sources/Hub/PetHubApp.swift` 注入 `[zdebug]` 并重建 build/，Lead 清理后 17:30 重新出干净构建；本报告以 17:30 构建为准，17:02/17:16 的旧结果只作为过程证据。
+
+## A. 结论
+
+**1.3.0 验收通过（PASS）**：捧哏排列（比例/坐标/抬高/左右/果冻右肩后/z 序/自动绑定/屏幕跟随）、绑定相对位置（真实 view 拖动、四只同增量、果冻跟随但不发起、开关持久化、重启恢复、落盘、亚点步长不漂移）、预览三图、DMG、文档全部通过。验收中发现 2 个实现缺陷（F2 排列屏幕选择、F3 绑定拖动亚点漂移）均已由 Lead 修复并在最终构建复验；2 处文档遗漏已修。无遗留阻塞项。
+
+| 项目 | 结果 |
+| --- | --- |
+| 捧哏排列（1.2/1.4/1.2/0.65、抬高 62pt、左右、果冻右肩后、屏内） | PASS |
+| z 序（前→后）薄肌 / 峰哥 / 太对了 / 果冻 | PASS（CGWindowList，runloop 提交后查） |
+| 排列后自动绑定 + 持久化 `hub.groupDrag` | PASS |
+| 绑定拖动：真实 AudioPetView 多步拖动四只同增量 + 果冻跟随 + 松手落盘 | PASS |
+| 关掉绑定只动被拖的那只；重启恢复 groupDrag/位置 | PASS |
+| F3：4 步 ×2.5 → 其余三只 +10,+10（0.2pt 内）；整数步长对照 | PASS（修复后） |
+| 排列/紧凑排列跟随薄肌所在屏幕（双屏场景） | PASS |
+| `--self-test` 213 项 / 干净偏好不写 | PASS |
+| `--chain-test`（3 次，1 次自动重试后 PASS、4 句、无第五句） | PASS |
+| `--preview` 四单图 + preview-all + preview-stage（6 张） | PASS |
+| DMG（sha/verify/卷名/1.3.0/挂载自检 213/只读/唯一） | PASS |
+| 文档（1.3.0、213、hub.groupDrag、preview-stage、D5/D6） | PASS |
+
+## B. 变更范围与静态审查
+
+`git diff v1.2.0 --stat`：`AudioPetController/AudioPetViews/PetHost/PetHubApp/JellyPetController/main.swift/build.sh` + README/TECHNICAL/AGENTS/DESIGN + `docs/preview-all.png` 重新生成；新增 `docs/preview-stage.png`（未跟踪交付图）。
+
+- **捧哏排列**（[PetHubApp.swift:303-340](../Sources/Hub/PetHubApp.swift)）：先 `applySizeScale` 1.2/1.4/1.2/0.65；`arrangementScreen()` 用薄肌窗口中心的屏幕（[PetHubApp.swift:276-284](../Sources/Hub/PetHubApp.swift)）作为基准；`base=visible.minY+36`、行内间距 6；薄肌/太对了/峰哥 按宽度从左到右，太对了 `raise = max(56, 薄肌高×0.18)`（实测 62pt）；果冻中心 `x=峰哥右边−0.55×图标边长`、`y=base+峰哥高×0.68`；随后按 `[果冻, 太对了, 峰哥, 薄肌]` 依次 `bringToFront()`（后→前，薄肌最前）；最后 `groupDragEnabled=true` 并在非诊断模式写 `hub.groupDrag=true`。
+- **绑定相对位置 / F3 修复**：`AudioPetView.mouseDragged` 首次越过 4pt 阈值时 `groupDragBegan()`，之后每步把增量回调 `groupDragMoved`，`mouseUp` 先 `savePosition()` 再 `groupDragEnded()`（[AudioPetViews.swift](../Sources/Audio/AudioPetViews.swift)）。主控 `petDragBegan` 记录其余三只基准并清零 `groupDragTotal`；`petDragged` 累加**总偏移**后用 `setGroupDragOffset(dx: total, dy: total)` 让其余三只相对基准绝对定位；`petDragEnded` 统一 `endGroupDrag()` 落盘（[PetHubApp.swift:146-170](../Sources/Hub/PetHubApp.swift)）。被拖的那只仍走原来的 `initialWindow+delta` 绝对路径；果冻 `beginGroupDrag` 记图标中心、`setGroupDragOffset` 用 `center=基准+偏移`（[JellyPetController.swift:575-590](../Sources/Jelly/JellyPetController.swift)），果冻自己的 `JellyView` 拖动仍只做原地 Q 弹、不调用 group drag。这样避免逐步读回 window server 量化后的 frame origin 造成累积丢点（F3 根因）。
+- 协议：`PetHost` 新增 `bringToFront/windowFrame/moveBy/persistPosition`（排列/拖动/合成用），F3 又加 `beginGroupDrag/setGroupDragOffset/endGroupDrag`；`PetHubContext` 新增 `groupDragEnabled/petDragged/petDragEnded`，F3 加 `petDragBegan`。DESIGN §2 已同步（D6）。
+- 预览：`--preview` 先写四张单图 + `preview-all.png`，再写 `makeStageComposite()`：`stageArrange()` 后按 `[果冻,太对了,峰哥,薄肌]` 取 `previewImage()` 与 `windowFrame` 在 1440×720 画布（2x 输出 2880×1440）上按 z 序合成；果冻的 `windowFrame` 已实现（560×560 透明窗口），修复了此前合成缺果冻的问题。
+- 自检：204 → **213**（新增捧哏排列 8 项 + 绑定拖动小数步长 1 项）；`--self-test/--preview/--dump-state/--chain-test` 仍只读（`PetHubApp.diagnostic` + 各处 `!diagnostic` 保护）。
+- 诊断只读复核：干净域下 `--self-test`、`--preview` 均不产生 `local.pethub.app` 域（含 stage 排列/自动绑定路径）。
+
+## C. 基线（17:30 最终构建）
+
+```text
+$ defaults delete local.pethub.app
+$ build/桌宠合集.app/Contents/MacOS/PetHub --self-test
+== 213 项检查 ==
+PASS                     # exit 0，OK=213，FAIL=0
+$ defaults read local.pethub.app
+Domain local.pethub.app does not exist
+
+$ ... --dump-state
+version=1.3.0 relay=on pets=4
+shaolan size=260x296 pos=768,24 / sunpet 180x228 pos=1064,24 / fengge 260x291 pos=1280,24 / jelly 560 pos=1640,88
+
+$ ... --help → 桌宠合集 PetHub 1.3.0
+```
+
+`--chain-test` 在最终构建连跑 3 次均 PASS（第 2 次首轮按设计放弃一捧，日志出现“重试一次”，第 2 次 4 句、hop 0/1/2/3、root 全薄肌、无第五句；其余两次首轮即过）。`--preview /tmp/qa6c-preview` 出 6 个文件：四张单图 2x（520×592 / 360×456 / 520×582 / 1120×1120）+ `preview-all.png` 2880×1280 + `preview-stage.png` 2880×1440，跑完偏好域不存在。单实例：第二个正常启动 0.14s 退出、第一个存活。
+
+## D. 捧哏排列：视觉与坐标
+
+`docs/preview-stage.png`（最终构建生成，2880×1440）用 read_image 复核：薄肌在左、太对了居中且明显抬高、峰哥在右、果冻（Claude 标记）缩在峰哥右肩后且可见（未被完全遮死），四只按后→前叠放，背景透明区干净。`docs/preview-all.png` 一排名与 1.2.0 一致。
+
+真实 PetHubApp harness（独立域）点击真实 `stageArrange` 后的窗口坐标（主屏 visibleFrame `(70,0,1658,1079)`）：
+
+```text
+[stage] shaolan 455.0,36.0  312.0x348.0
+[stage] sunpet  773.0,98.0  252.0x300.0   （抬高 62pt）
+[stage] fengge 1031.0,36.0  312.0x342.0
+[stage] jelly  1255.6,227.0  83.2x83.2    （峰哥右肩后，中心 1297.2,268.6）
+```
+
+比例 1.2/1.4/1.2/0.65、四只都在屏内、果冻与峰哥可见区重叠（叠放）、自动 `hub.groupDrag=true`、尺寸偏好 312/252/312/83、四只位置均已落盘。z 序用 CGWindowList（**runloop 提交后**查询）：前→后 = 薄肌 / 峰哥 / 太对了 / 果冻，与 `bringToFront` 顺序一致。
+
+## E. 绑定相对位置与重启（真实 AudioPetView 事件 + 真实主控）
+
+- **真实 view 拖动**（合成 mouseDown/mouseDragged×4/mouseUp，窗口随步移动）：绑定开时拖薄肌 Δ(40,−20) → shaolan/sunpet/fengge/jelly 全部 +40,−20，果冻图标中心同样 +40,−20，松手后其余三只位置落盘。
+- **关掉绑定**：真实 toggle 写 `hub.groupDrag=false`；再拖薄肌 24pt → 只有薄肌动，其余三只不动；重新开启写回 true。
+- **重启（Phase2，18/18 PASS）**：恢复比例 `[1.2,1.4,1.2,0.6484375]`、`hub.groupDrag=true`；实际 frame 与落盘坐标一致（shaolan 455,36 / sunpet 773,98 / fengge 1031,36 / jelly 中心 1255.74,227.06），相对关系（抬高/左右/果冻右肩后/屏内）保持；重启后真实拖动太对了 Δ(−20,+8) → 四只同增量（整数步长）。
+- **回归**：compact 后底边=minY+16、间距约 6（6.0/6.0/6.8，亚点取整）、最右贴 16、屏内不重叠；全部归位回标准槽位（742/1028/1254,24，果冻 1640,88）；大小滑块 1.0 四只联动仍正常。
+
+**F3 修复复验（Phase4）**：
+
+```text
+[drift-frac-fixed] shaolan=0.00,0.00 / sunpet=10.00,10.00 / fengge=10.00,10.00 / jelly=10.00,10.00
+OK F3 修复：4 步 ×2.5 其余三只整体 +10,+10（0.2pt 容差）
+OK 整数步长对照 5×2 = +10,+10 仍正确
+```
+
+修复前同用例日志在 `/tmp/qa6b-hub-phase4.log`：audio 两只 8pt、果冻 10pt（差 2pt）；修复后一致。
+
+## F. 本轮缺陷与修复
+
+- **F2（实现，排列屏幕选择）**：原 `stageArrange/compactArrange` 用 `PetLayout.screen()`（`NSScreen.main`），App 不活跃时 main 可能指向副屏，排列可能跑到与四只当前所在不同的屏幕。Lead 新增 `arrangementScreen()`：优先薄肌窗口中心所在屏幕，找不到才回退。最终构建双屏复验（Phase3 8/8）：把薄肌移到左侧副屏后，捧哏排列与紧凑排列都落在副屏，未跑回移动前的屏幕，且底边/贴边都按副屏 visibleFrame 计算。
+- **F3（实现，绑定拖动亚点漂移）**：见 §B/E；按“基准 + 累计偏移”绝对定位修复，复验 4×2.5 = +10,+10；`--self-test` 新增该项，计数 213。
+- **D5（文档）**：`--preview` 现在 6 张（四单图+all+stage），TECHNICAL/DESIGN/AGENTS 已改；已复核。
+- **D6（文档）**：DESIGN §2 补 `PetHubContext.petDragBegan` 与 `PetHost.beginGroupDrag/setGroupDragOffset/endGroupDrag`；AGENTS 拖动段改成“petDragBegan 建基准 → petDragged 累计偏移 → setGroupDragOffset 绝对定位”；已复核。
+- 过程环境冲突：17:13 另一会话向 `Sources/Hub/PetHubApp.swift` 注入 `[zdebug]` 并重建 build/（非本次验收操作）；Lead 清理并 17:30 重新冻结。最终验收只用 17:30 干净构建；污染构建（587488 字节）未作为交付物。
+
+## G. DMG 与独立构建
+
+```text
+sha256  8a9d627abcc9bdcf28809e908f2cdcbd04ad1c279aa8b67135eefc7932701bc8  PetHub-1.3.0.dmg（与 Lead 提供值一致；shasum -c OK）
+hdiutil verify → checksum is VALID；UDZO；卷名「桌宠合集」；app + Applications -> /Applications
+Info.plist：local.pethub.app / 桌宠合集 / CFBundleShortVersionString=1.3.0 / CFBundleVersion=1 / LSUIElement=true / CFBundleIconFile=AppIcon
+挂载后直接 --self-test：213 OK / 0 FAIL / PASS / exit 0；跑完 local.pethub.app 域不存在；codesign verify OK
+dist/ 只有 PetHub-1.3.0.{dmg,zip,sha256}；1.2.0 在 /tmp/PetHub-1.2.0-archive
+```
+
+独立复跑（`/tmp/qa6c-pet-repo`，rsync 源 + 排除 build/dist/.git/upstream）：`./build.sh --package` → 213 OK、末行 PASS、24.9s；dist 只出 1.3.0；sha256 -c OK；该 dmg 挂载后自检 213 PASS、不写偏好。
+
+## H. 文档一致性
+
+- README：安装 `PetHub-1.3.0.dmg`、玩法表加「捧哏排列」「绑定相对位置」、**两张**预览图 `docs/preview-all.png` / `docs/preview-stage.png` 链接均有效。
+- TECHNICAL：§5 增加合影比例/抬高/果冻右肩后/后前层次、排列跟随薄肌屏幕、绝对定位防亚点漂移、`hub.groupDrag` 偏好行、`--self-test 213 项`、dump 首行 1.3.0、构建版本 1.3.0、`--preview` 六张。
+- AGENTS：版本 1.3.0、排列/拖动的 `petDragBegan`→`petDragged`→`setGroupDragOffset` 链路、`hub.groupDrag`、六张预览图。
+- docs/DESIGN：PetHost/PetHubContext 新成员、菜单新增两项、自检描述加捧哏排列/绑定相对位置、ShortVersion/dmg 名 1.3.0、验收清单加排列与绑定。
+- 旧字样：文档无 `1.2.0` / `204` / `212` 残留；`--preview` 已统一“6 张”；README/TECHNICAL 相对链接无坏链。
+
+## I. 非阻塞观察与盲区
+
+- z 序断言已从 `--self-test` 移除（Lead 说明：同一 runloop 立刻查 CGWindowList 时 window server 未提交，时序不稳）；本轮 z 序由 harness 在 runloop 提交后用 CGWindowList 验证，结果正确。`bringToFront` 仍是 `orderFrontRegardless`（无后加的 order(.above)）。
+- 果冻尺寸偏好 `iconSide` 仍存 Int：0.65×128=83.2 落盘 83，重启 `sizeScale=0.6484375`（差 0.15%，自检/harness 容差内）。
+- 默认布局/「全部归位」仍走 `PetLayout.screen()`（`NSScreen.main`）；App 不活跃时可能把初始一排放到副屏（本轮曾在副屏看到 dump 928,1141）。本次只修了排列/紧凑排列的屏幕跟随（F2 范围），默认布局未改；真实 GUI 启动通常 main=主屏，故记观察不阻塞。
+- 阶段合成图底部是窗口底边（人物素材本身在窗口内截断），不是裁切错误；果冻在峰哥右肩后可见约右侧一块，符合“别被完全遮死”。
+- 盲区：无辅助功能/屏幕录制权限，未做真实鼠标拖菜单滑块/真实鼠标拖桌宠；用真实 AudioPetView 事件、真实 NSSlider target-action、真实 PetHubApp action 与 CGWindowList/NSWindow.frame 替代。chain-test 重试分支在最终构建第 2 次真实触发并恢复 PASS。
+- 环境：本轮验收前有遗留 `/Applications/桌宠合集.app` 运行实例与 `/Volumes/桌宠合集`（1.2.0）挂载，已按 Lead 要求停止进程/卸载；最终无 PetHub 进程、无挂载、偏好域已清；`/Applications` 里 Lead 安装的 1.3.0 未删除、未安装新副本。
+
+## J. task-6 清单覆盖
+
+| # | 要求 | 结果 |
+| --- | --- | --- |
+| 1 | 静态审查排列/拖动链路（比例坐标、z 序、增量持久化、果冻不发起、递归、诊断只读） | PASS（§B；F3 修复后绝对定位） |
+| 2 | build.sh PASS / self-test 213 只读 / dump 1.3.0 / chain 3 次 / preview 六张 stage 图 | PASS（§C、§D） |
+| 3 | 真实 harness：排列 action、真实拖动、groupDrag 开关/落盘/重启、样式回归 | PASS（§D、§E；Phase1/2/3/4） |
+| 4 | DMG sha/verify/卷名/1.3.0/挂载自检 213/只读/dist 唯一 | PASS（§G） |
+| 5 | 文档（1.3.0/213/hub.groupDrag/preview-stage/旧字样） | PASS（§H；D5/D6 已修） |
+| 6 | 报告追加 + complete task-6 | 本节即追加内容 |
+
+**1.3.0 增量验收结论：PASS。F2/F3 已修复并复验，D5/D6 已修，无遗留阻塞项；交付物 `dist/PetHub-1.3.0.dmg`（sha256 `8a9d627a…`）可发布。**

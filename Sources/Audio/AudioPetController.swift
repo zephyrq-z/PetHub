@@ -55,6 +55,8 @@ final class AudioPetController: NSObject, PetHost, AVAudioPlayerDelegate {
     private var motionEnabled = false
     private var motionStatus = "机身摇晃：未开启"
 
+    private var groupDragStart: NSPoint?
+
     private let testing = CommandLine.arguments.contains("--self-test")
     private let tracing = CommandLine.arguments.contains("--trace")
     private let previewing = CommandLine.arguments.contains("--preview")
@@ -503,6 +505,26 @@ final class AudioPetController: NSObject, PetHost, AVAudioPlayerDelegate {
         return clips.contains { $0.id == pin }
     }
 
+    func groupDragBegan() {
+        context?.petDragBegan(id)
+    }
+
+    func groupDragMoved(dx: CGFloat, dy: CGFloat) {
+        context?.petDragged(id, dx: dx, dy: dy)
+    }
+
+    func groupDragEnded() {
+        context?.petDragEnded(id)
+    }
+
+    /// 自检用：模拟「拖动这只 1 步」的完整回调链（窗口移动 + 通知主控）。
+    func simulateDragForTesting(dx: CGFloat, dy: CGFloat) {
+        moveBy(dx: dx, dy: dy)
+        groupDragBegan()
+        groupDragMoved(dx: dx, dy: dy)
+        groupDragEnded()
+    }
+
     func popUpMenu(from view: NSView, with event: NSEvent) {
         NSMenu.popUpContextMenu(makeMenu(), with: event, for: view)
     }
@@ -601,6 +623,32 @@ final class AudioPetController: NSObject, PetHost, AVAudioPlayerDelegate {
         guard let panel else { return }
         panel.setFrameOrigin(NSPoint(x: left, y: bottom))
         if !diagnostic { savePosition() }
+    }
+
+    func bringToFront() {
+        guard let panel else { return }
+        panel.orderFrontRegardless()
+    }
+
+    func moveBy(dx: CGFloat, dy: CGFloat) {
+        guard let panel else { return }
+        panel.setFrameOrigin(NSPoint(x: panel.frame.origin.x + dx, y: panel.frame.origin.y + dy))
+    }
+
+    func persistPosition() { savePosition() }
+
+    func beginGroupDrag() {
+        groupDragStart = panel?.frame.origin
+    }
+
+    func setGroupDragOffset(dx: CGFloat, dy: CGFloat) {
+        guard let start = groupDragStart, let panel else { return }
+        panel.setFrameOrigin(NSPoint(x: start.x + dx, y: start.y + dy))
+    }
+
+    func endGroupDrag() {
+        groupDragStart = nil
+        savePosition()
     }
 
     @objc private func resetPosition() {

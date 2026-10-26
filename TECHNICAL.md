@@ -167,6 +167,14 @@ struct PetSpeech: Equatable {
   总菜单的滑块不受这个开关影响，永远是四只一起。
 - 「紧凑排列」一键收拢：间距从默认 36pt 收到约 6pt、屏幕边距从 24pt 收到 16pt，贴着右下角排一行；
   「全部归位」还是原来的标准间距。
+- 「捧哏排列（合影）」按合影站位摆四只：薄肌左、太对了中间抬高（约为薄肌高度的 18%）、峰哥右、
+  果冻缩到峰哥右肩后；四只尺寸分别切到 1.2 / 1.4 / 1.2 / 0.65 倍，并按「果冻 → 太对了 → 峰哥 → 薄肌」
+  的后前层次叠放。摆好后自动打开「绑定相对位置」。排列跟随薄肌当前所在屏幕（App 不活跃时
+  `NSScreen.main` 可能指向副屏，所以不用它），四只不会被甩到另一块显示器。
+- 「绑定相对位置」打开时，拖任意一只语音桌宠，主控把鼠标增量同步给另外三只（`moveBy`），
+  整体队形不变；果冻会跟着平移，但它自己的按压/拖动仍然只做原地 Q 弹（窗口不动的上游手感）。
+  松开后统一落盘位置；开关持久化到 `hub.groupDrag`。跟随的桌宠用「拖动开始时的位置 + 累计偏移」
+  绝对定位，而不是每步读回被 window server 量化过的 frame 再累加，避免亚点步长拖久了队形走形。
 - 自检里有默认布局断言：三只语音窗口 + 果冻的 128×128 可见图标互不重叠，且都完整落在屏幕可见区内。
   果冻的 560×560 透明窗口允许伸出屏幕（点击区域只按中间的图标算），这是上游原有的手感，不算布局错误。
 
@@ -201,6 +209,7 @@ struct PetSpeech: Equatable {
 | --- | --- | --- | --- |
 | `hub.relayEnabled` | Bool | true | 全局「捧哏联动」开关 |
 | `hub.linkSize` | Bool | true | 「大小联动」：每只菜单里的滑块是否同步到另外三只 |
+| `hub.groupDrag` | Bool | false | 「绑定相对位置」：拖一只语音桌宠时四只一起平移；点「捧哏排列」会自动打开 |
 
 旧的四只独立 App 的偏好不会自动迁过来：bundle id 不同（例如 `local.shaolan.desktop-pet`），
 合集按自己的默认布局重新摆。自检模式只读不写。
@@ -215,10 +224,10 @@ struct PetSpeech: Equatable {
 | 命令 | 作用 | 输出 / 退出码 |
 | --- | --- | --- |
 | `-h` / `--help` | 打印用法 | 退出码 0 |
-| `--self-test` | 四只 controller 自检 + 主控断言（relay、三只 reaction、菜单、大小联动、显隐、默认布局、诊断字段），目前 204 项 | 每项 `OK` / `FAIL`，最后一行 `PASS` 或 `FAIL: [...]`；失败退出码 1 |
+| `--self-test` | 四只 controller 自检 + 主控断言（relay、三只 reaction、菜单、大小联动、显隐、默认布局、诊断字段），目前 213 项 | 每项 `OK` / `FAIL`，最后一行 `PASS` 或 `FAIL: [...]`；失败退出码 1 |
 | `--chain-test` | 模拟点薄肌，实测四步捧哏链 | trace + `[chain]` 记录，成功 `PASS 四步捧哏链：…`，失败 `FAIL`；约 21 秒，偶发丢句自动重试一次 |
-| `--dump-state` | 打印当前状态后退出 | 首行 `version=1.2.0 relay=on pets=4`，随后每只一行，见下 |
-| `--preview <目录>` | 四只各离屏渲染一张 `preview-<id>.png`（2x），再拼一张 `preview-all.png` | 打印写出的路径；目录不存在会自动建 |
+| `--dump-state` | 打印当前状态后退出 | 首行 `version=1.3.0 relay=on pets=4`，随后每只一行，见下 |
+| `--preview <目录>` | 四只各离屏渲染一张 `preview-<id>.png`（2x），再拼 `preview-all.png`（一排）和 `preview-stage.png`（捧哏排列合影），共 6 张 | 打印写出的路径；目录不存在会自动建 |
 | `--trace` | **正常启动**，额外把联动和桌宠的每一跳打到 stdout（受单实例限制、会写偏好） | `[relay] <时间戳> …`、`[trace] <时间戳> pet=<id> …` |
 | `--probe-sensor` | 检查这台 Mac 有没有可用的 SPU 运动传感器 | `sensor available; open result=…; uid=…` 或 `sensor unavailable` |
 
@@ -253,7 +262,7 @@ shaolan visible=true window=on size=260x296 pos=1780,24 clips=37 pool=8 mode=ran
 3. 建 `Contents/{MacOS,Resources}`；拷 `Assets/{shaolan,sun,fengge,jelly}` 四个目录、
    `Assets/AppIcon.icns`、`LICENSE`、`NOTICE.md`、`licenses/` 到 Resources。
 4. 写 `Contents/Info.plist`：`CFBundleExecutable=PetHub`、`CFBundleIdentifier=local.pethub.app`、
-   `CFBundleName/DisplayName=桌宠合集`、`CFBundleShortVersionString=1.2.0`、`CFBundleVersion=1`、
+   `CFBundleName/DisplayName=桌宠合集`、`CFBundleShortVersionString=1.3.0`、`CFBundleVersion=1`、
    `LSMinimumSystemVersion=14.0`、`LSUIElement=true`、`NSHighResolutionCapable=true`、
    `CFBundleIconFile=AppIcon`。
 5. `xattr -cr` → `codesign --force --sign -` → `codesign --verify`。
@@ -263,11 +272,11 @@ shaolan visible=true window=on size=260x296 pos=1780,24 clips=37 pool=8 mode=ran
 
 ```bash
 ./build.sh                 # 编译 + 自检 → build/桌宠合集.app，最后一行 PASS
-./build.sh --package       # 另出 dist/PetHub-1.2.0.zip / .dmg / .sha256（卷名「桌宠合集」）
+./build.sh --package       # 另出 dist/PetHub-1.3.0.zip / .dmg / .sha256（卷名「桌宠合集」）
 ./build.sh --no-self-test  # 无图形会话时跳过自检（发布前别用）
 ```
 
-环境变量 `PET_VERSION`（默认 1.2.0）、`PET_BUILD`（默认 1）。dmg 里是
+环境变量 `PET_VERSION`（默认 1.3.0）、`PET_BUILD`（默认 1）。dmg 里是
 「桌宠合集.app」+「Applications」软链，拖进去就是安装。
 
 图标改动后重新生成：

@@ -547,11 +547,45 @@ final class JellyPetController: NSObject, PetHost {
     var visualWidth: CGFloat { iconSide }
 
     func moveToRow(left: CGFloat, bottom: CGFloat) {
+        groupDragStartCenter = nil
         center = CGPoint(x: left + iconSide / 2, y: bottom + iconSide / 2)
         model.settleAll()
         applyCenter()
         if !diagnostic { persist() }
         view.needsDisplay = true
+    }
+
+    func bringToFront() {
+        panel.orderFrontRegardless()
+    }
+
+    var windowFrame: NSRect { panel.frame }
+
+    func moveBy(dx: CGFloat, dy: CGFloat) {
+        center.x += dx
+        center.y += dy
+        applyCenter()
+        view.needsDisplay = true
+    }
+
+    func persistPosition() { persist() }
+
+    private var groupDragStartCenter: CGPoint?
+
+    func beginGroupDrag() {
+        groupDragStartCenter = center
+    }
+
+    func setGroupDragOffset(dx: CGFloat, dy: CGFloat) {
+        guard let start = groupDragStartCenter else { return }
+        center = CGPoint(x: start.x + dx, y: start.y + dy)
+        applyCenter()
+        view.needsDisplay = true
+    }
+
+    func endGroupDrag() {
+        groupDragStartCenter = nil
+        persist()
     }
 
     @objc private func hidePet() {

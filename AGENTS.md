@@ -8,13 +8,13 @@
 ## 构建与验证
 
 - `./build.sh` 编译并跑 `--self-test`，**最后一行必须是 `PASS`**。没 PASS 就是没改完。
-- `./build.sh --package` 产出 `dist/PetHub-1.2.0.{zip,dmg,sha256}`；dmg 卷名「桌宠合集」，里面是 app + `/Applications` 软链。
+- `./build.sh --package` 产出 `dist/PetHub-1.3.0.{zip,dmg,sha256}`；dmg 卷名「桌宠合集」，里面是 app + `/Applications` 软链。
 - `./install.sh --build` 装进 /Applications 并启动；`./install.sh --uninstall` 卸载（偏好保留）。
 - 只支持 Apple Silicon + macOS 14，`build.sh` 里写死 `arm64-apple-macosx14.0`，不要为 Intel 改。
 - 诊断入口：`--self-test`、`--chain-test`、`--dump-state`、`--preview <目录>`、`--probe-sensor`、`-h`。
   `--trace` 是**正常启动**加日志：受单实例限制、会写偏好、会按正常启动开机身摇晃，别当只读诊断用。
 - 改完联动一定要跑 `--chain-test`（约 21 秒；偶发丢句会自动重试一次）：自检只断言 reaction 策略，不真的放四步链。
-- 画面改动用 `--preview /tmp/pethub-preview` 出四张单图和一张合影，肉眼确认后再算完成。
+- 画面改动用 `--preview /tmp/pethub-preview` 出四张单图 + `preview-all.png` + `preview-stage.png`（合影站位），肉眼确认后再算完成。
 - 改图标：`swift Tools/make-icon.swift`，它会重生成 `Assets/AppIcon.icns` 和 `/tmp/pethub-icon-preview.png`。
 
 ## 不能破的约束
@@ -48,18 +48,22 @@
 - 二进制不进仓库，安装包放 Releases / 交付目录。
 - 分发包命名固定：`PetHub-<版本>.zip`、`PetHub-<版本>.dmg`、`PetHub-<版本>.sha256`；
   dmg 卷名「桌宠合集」；zip 用 `ditto`（中文文件名只有它能保证 Finder 双击正确解压）。
-- 发布前至少跑一遍：`./build.sh --package` + `hdiutil verify dist/PetHub-1.2.0.dmg`。
+- 发布前至少跑一遍：`./build.sh --package` + `hdiutil verify dist/PetHub-1.3.0.dmg`。
 
 ## 这个仓库
 
-- app：`桌宠合集.app`，可执行文件 `PetHub`，bundle id `local.pethub.app`，版本 1.2.0
+- app：`桌宠合集.app`，可执行文件 `PetHub`，bundle id `local.pethub.app`，版本 1.3.0
 - 四只顺序（也是右下角一排和菜单里的顺序）：薄肌 `shaolan` → 太对了 `sunpet` → 峰哥 `fengge` → 果冻 `jelly`
 - 联动：三只语音桌宠进程内广播（`PetRelay`）；果冻只形变、不接话
 - 大小：菜单栏/每只右键菜单里都是 50%–180% 的滑块（`SizeSliderView`，默认 100%）；总菜单滑块永远四只一起，
   每只菜单滑块受「大小联动」`hub.linkSize` 控制。`PetHost.applySizeScale` / `sizeScale` / `visualWidth` /
   `moveToRow` 是这块的边界；紧凑排列用约 6pt 间距 + 16pt 边距，改布局时同步维护
+- 排列/拖动：「捧哏排列（合影）」按固定比例和前后层次摆位并自动绑定；「绑定相对位置」`hub.groupDrag` 打开时，
+  拖动先用 `PetHubContext.petDragBegan` 建基准，再用 `petDragged` 的累计偏移让其余三只
+  `setGroupDragOffset` 绝对定位（`beginGroupDrag`/`endGroupDrag`，避免亚点步长累积漂移）；
+  被拖的那只用 `moveBy`/`persistPosition`。果冻只跟着平移，不接受拖拽发起（保持原地 Q 弹）
 - 偏好域：`local.pethub.app`；四只前缀 `pet.shaolan.` / `pet.sunpet.` / `pet.fengge.` / `pet.jelly.`；
-  全局开关 `hub.relayEnabled`、`hub.linkSize`
+  全局开关 `hub.relayEnabled`、`hub.linkSize`、`hub.groupDrag`
 - 入口：菜单栏「桌宠」；没有 Dock 图标（`LSUIElement`）
 - 自检/诊断模式（`--self-test` / `--chain-test` / `--dump-state` / `--preview`）不做单实例拦截；
   正常启动（含 `--trace`）只允许一个实例。
