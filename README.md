@@ -37,6 +37,9 @@
 <p align="center"><img src="docs/preview-all.png" width="720" alt="四只桌宠在桌面上排成一排"></p>
 <p align="center"><img src="docs/preview-stage.png" width="720" alt="捧哏排列：四只的合影站位"></p>
 
+GitHub 仓库：[zephyrq-z/PetHub](https://github.com/zephyrq-z/PetHub) ·
+Release 下载页：[Releases](https://github.com/zephyrq-z/PetHub/releases/latest)
+
 ## 下载哪个
 
 2.0.0 的 Release 一次提供三种：

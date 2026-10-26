@@ -876,3 +876,130 @@ dist/ 只有 PetHub-2.0.0.{dmg,zip,sha256}；1.3.0 在 /tmp/PetHub-1.3.0-archive
 | 7 | 报告追加 + complete task-8 | 本节即追加内容 |
 
 **2.0.0 增量验收结论：PASS。F4/F5/F6 已修复并复验；无遗留阻塞项；交付物 `dist/PetHub-2.0.0.dmg`（sha256 `77d0df05…`）可发布。**
+
+---
+
+# 2.0.0 跨平台 Release（Windows + macOS + 源码）验收（2026-10-26 21:47–22:06）
+
+> 发布前验收。对象：tag/commit `v2.0.0` = `f084267`，GitHub public repo `zephyrq-z/PetHub`（main 已推），本地发布资产 `dist/release/`，GitHub **draft** Release v2.0.0。验收期间 **未发布、未修改 Release 状态、未改实现/dist**。
+
+## A. 结论
+
+**验收通过（PASS），可以 publish。** 三平台资产、校验值、源码包、Windows 源码 smoke、macOS 包自检、Release 文案/署名、docs 一致性、GitHub draft assets 全部核对通过；无阻塞问题。Draft 保持 draft，等待 Lead 发布。
+
+| 项目 | 结果 |
+| --- | --- |
+| Windows 源码 `npm run smoke`（4 窗口 / 四步链 / 设置窗 / 托盘） | PASS |
+| Windows 源码安全（不联网、不申请额外权限、contextIsolation/nodeIntegration） | PASS（代码检查） |
+| Windows exe（PE32 NSIS portable，102,250,257 B）内容/排版/sha | PASS |
+| Windows zip（141,254,674 B，根 PetHub.exe + resources/assets/docs） | PASS |
+| Source.zip（14,438,389 B，git archive v2.0.0，154/154 tracked files） | PASS |
+| macOS dmg（10,992,574 B）sha/verify/挂载自检 222/只读 | PASS |
+| macOS zip（10,818,143 B）解压 app 自检 222/codesign | PASS |
+| 三平台下载表 / sha256.txt / RELEASE_NOTES 校验值一致 | PASS |
+| Release 文案/署名/上游链接/JellyPet 无 LICENSE/素材不商用 | PASS |
+| GitHub repo public、main/tag=f084267、draft assets 6 个名称/大小/sha 与本地一致 | PASS（保持 draft） |
+
+## B. 本地资产与校验值（`dist/release/`）
+
+```text
+77d0df05…  PetHub-2.0.0-macOS-arm64.dmg   10,992,574
+a3ef64ef…  PetHub-2.0.0-macOS-arm64.zip   10,818,143
+41f3bf53…  PetHub-2.0.0-Windows-x64.exe  102,250,257  PE32 GUI, NSIS-3 Unicode portable
+8e0ad59c…  PetHub-2.0.0-Windows-x64.zip  141,254,674
+760b0ead…  PetHub-2.0.0-Source.zip        14,438,389  (zip comment = f084267)
+```
+
+`shasum -a 256 -c PetHub-2.0.0-sha256.txt` 五项全部 OK；`RELEASE_NOTES.md` 的「校验值」代码块与文件逐项一致（实测 5/5 OK）。`file` 类型符合预期（exe 为 NSIS self-extracting PE32；dmg 为 zlib UDIF；zip 为 Zip archive）。
+
+## C. Windows 源码 / smoke / 安全
+
+```text
+$ cd windows && npm run smoke
+[smoke] windows=4 ... shaolan=260x296 sunpet=180x228 fengge=260x290 jelly=224x224
+[smoke] validate shaolan clips=37/37 ... sunpet 28/28 ... fengge 11/11 ... jelly marks=3/3
+[smoke] relay steps=4
+[smoke] step 1/4 from=shaolan hop=0 root=shaolan ...
+[smoke] step 2/4 from=sunpet hop=1 ...
+[smoke] step 3/4 from=fengge hop=2 ...
+[smoke] step 4/4 from=sunpet hop=3 ...
+[smoke] 第 4 步之后 1.5s 内没有第五句
+[smoke] settings/scale/visibility/relay IPC ok; settings.json 持久化 ok
+[smoke] tray menu ok（19 项，四只右键菜单可构建）
+[smoke] settings window ok（大小联动 / 全局滑块 / 版权声明 / 四只缩放）
+PASS windows=4 clips=37/28/11 chain=shaolan>sunpet>fengge>sunpet root=shaolan elapsed=10.1s
+```
+
+- 末行 PASS、exit 0；smoke 覆盖 4 窗口、四步链（无第五句）、设置窗、托盘、设置持久化。`npm start -- --settings` 未单独点开（smoke 已覆盖设置窗口构建与 IPC）；没有在 Windows 实机运行，文档已写明。
+- 源码安全（`windows/main.js` / `preload.js` / `lib` / `renderer`）：
+  - `webPreferences`：桌宠/设置/探针窗口均 `contextIsolation: true`、`nodeIntegration: false`；preload 只通过 `contextBridge` 暴露白名单 IPC（`ready/onInit/onPlay/onStop/.../settingsCommand`），没有 `nodeIntegration` 泄漏。
+  - `grep` 未发现 `http/https/net/dgram/WebSocket/XMLHttpRequest/fetch`、`child_process`、`openExternal`、远程 `loadURL`、`webSecurity:false`、`allowRunningInsecureContent`、自定义权限请求处理器等；`shell.openPath` 只用于打开本地内容包/设置目录。无网络代码、无额外权限 API。
+  - 与 macOS 的差异（无机身摇晃、果冻简化 CSS 形变、无可视化 PetPack 编辑器、透明区点击穿透较弱、未 Windows 实机长测）在 `docs/WINDOWS.md`/`docs/PLATFORMS.md`/`RELEASE_NOTES.md` 均已写明。
+
+## D. Windows exe / zip 内容
+
+- exe：`file` = PE32 GUI, NSIS-3 Unicode portable；7z 显示 `$PLUGINSDIR/app-64.7z`（101,804,246 B）等 4 项；解出 payload 后含 `PetHub.exe`、`resources/app.asar`、`resources/assets/{shaolan,sun,fengge,jelly}`（37/28/11 句 + 3 个标志）、`resources/CREDITS.md`、`NOTICE.md`、`LICENSE`、`docs/{WINDOWS,PETPACK}.md`。
+- zip：根级 `PetHub.exe`（210 MB 解压）+ `resources/app.asar` + `resources/assets/...` + `resources/{CREDITS,NOTICE,LICENSE}` + `resources/docs/...` + Electron 自带 `LICENSE.electron.txt`/`LICENSES.chromium.html`；165 files / 11 folders，解压约 351 MB，zip 141 MB，体积合理。
+- `resources/app.asar` 与 exe payload 内同名文件 md5 一致（`a20b6823…`）；asar 内文件列表 = `main.js`、`preload.js`、`lib/{layout,petpack,pets,probe,settings}.js`、`renderer/{pet,settings,probe}.*`、`package.json`；asar 内 `package.json` 只保留 name/productName/version/main/author/license（electron-builder 去掉 devDependencies/build/scripts，属正常裁剪），version=2.0.0。
+- zip 内 `CREDITS.md`/`NOTICE.md`/`LICENSE`/`docs/{WINDOWS,PETPACK}.md` 与仓库本地文件逐字节一致。
+
+## E. Source.zip
+
+- zip 注释 = `f084267b203d6fb8bca821ee430b9bb8a4087d7a`；解压 154 个文件，与 `git ls-tree -r --name-only v2.0.0` **154/154 完全一致**（无缺失、无额外文件）。
+- 顶层含 `.gitignore`、`AGENTS.md`、`CONTRIBUTING.md`、`CREDITS.md`、`LICENSE`、`NOTICE.md`、`README.md`、`TECHNICAL.md`、`build.sh`、`install.sh`、`Assets/`、`Sources/`（PetKit+PetHub）、`windows/`、`docs/`、`licenses/`、`Examples/`、`Tools/`；无 `node_modules/`、`upstream/`、`dist/`、`build/`、`.git/`。
+- 必需文件抽查全在：`Sources/PetKit/PetHost.swift`、`Sources/PetHub/PetHubApp.swift`、`windows/main.js`、`windows/package.json`、`docs/{ARCHITECTURE,PETPACK,WINDOWS,PLATFORMS}.md`、`CREDITS.md`、`CONTRIBUTING.md`、`README/TECHNICAL/NOTICE/LICENSE`、`build.sh/install.sh`、`Examples/MyTeacher/petpack.json`。可按 `docs/PLATFORMS.md` 的说明分别构建（macOS `./build.sh`；Windows `cd windows && npm install && npm run smoke`）。
+
+## F. macOS 发布包
+
+- dmg：sha 与 `sha256.txt`/RELEASE_NOTES 一致；`hdiutil verify` VALID；卷名「桌宠合集」、app + Applications 软链；挂载后 `--self-test` **222 OK / 0 FAIL / PASS**，干净偏好不写域；detach 正常。
+- zip：`ditto -x -k` 解出「桌宠合集.app」；解压 app 的 `--self-test` **222 PASS**；`codesign --verify --deep --strict` OK。
+- mac 版二进制与 2.0.0 构建（20:21）同源；tag f084267 相比 macOS 构建前的 Sources/Assets/build.sh 无改动（`git diff 180c42a..f084267 -- Sources Assets build.sh` 为空），Windows/credits/docs 提交不影响 macOS 二进制。
+
+## G. GitHub（draft）
+
+```text
+repo zephyrq-z/PetHub：visibility=PUBLIC，default branch main
+remote refs：main=f084267, tag v2.0.0=f084267
+draft release v2.0.0：title「桌宠合集 PetHub 2.0.0 · macOS + Windows + 自定义桌宠」，draft=true，targetCommitish=main
+body == dist/release/RELEASE_NOTES.md（3311 bytes，逐字节相等）
+assets=6，全部 state=uploaded，名称/大小/дigest 与本地一致：
+  macOS dmg 10,992,574    sha256:77d0df05…
+  macOS zip 10,818,143    sha256:a3ef64ef…
+  Windows exe 102,250,257 sha256:41f3bf53…
+  Windows zip 141,254,674 sha256:8e0ad59c…
+  Source.zip 14,438,389   sha256:760b0ead…
+  sha256.txt 470          sha256:6de09b99…
+```
+
+- Draft 的 `untagged-…` URL 是 GitHub draft 的正常表现；发布后才会成为 `releases/tag/v2.0.0`。验收过程**未执行 publish**、未改 release/仓库文件。
+- `RELEASE_NOTES.md` 是 release body，不作为 asset 上传（GitHub 通常如此）；本地文件与 body 完全一致，6 个二进制/校验资产齐全。
+
+## H. Release 文案 / 署名 / 文档一致性
+
+- `RELEASE_NOTES.md` 顶部 ⚠️ 明确「整合项目，不是原创角色项目，版权归原作者」，含四个上游链接/作者/许可/用到的内容表；JellyPet 标注「无 LICENSE」并写明公开再分发前联系原作者；音频/头像不在 MIT、不商用；Windows 未实机验证和功能差异写明；下载表覆盖 macOS/Windows/源码 + 两个备用包；校验值 5/5 与文件一致。
+- 根 `README.md` 顶部同样有 ⚠️ 整合声明 + 四个上游链接 + CREDITS 链接；下载表三种主包；macOS/Windows 安装说明；Windows 差异/限制与备用 zip；版权段重申素材不在 MIT、JellyPet 无 LICENSE。
+- `CREDITS.md`：四上游作者/许可/贡献/commit、MIT 与 JellyPet 例外、素材权利、设计致谢、引用格式；`docs/PLATFORMS.md` 三平台对照 + Windows 已知差异 + 校验命令 + 许可；`docs/WINDOWS.md` 安装/托盘/设置/PetPack/差异/FAQ；`NOTICE.md` 2.0 用户内容条款；`docs/UPSTREAM.md` 2.0 路径。
+- 链接检查：README/CREDITS/PLATFORMS/WINDOWS/NOTICE/UPSTREAM/RELEASE_NOTES 相对链接无坏链；docs 内无旧 `1.3.0`/`Sources/Hub`/`Sources/Audio/`/`Sources/Jelly/`/`213 项` 残留（`git grep` 仅命中 `windows/package-lock.json` 里 npm 依赖版本字符串 `1.3.0`，与项目版本无关）。
+
+## I. 非阻塞观察
+
+- Windows 版是 macOS 上交叉打包，**未在 Windows 实机运行**（任务允许，文档已写明）；本次用 `npm run smoke` + 7z/exe/zip 内容检查替代，不能证明 Windows 上的透明窗口/置顶/DPI/托盘实际观感。
+- Windows 功能差异（无机身摇晃、果冻简化 CSS 形变、无可视化 PetPack 编辑器、透明区穿透较弱、设置与 macOS 不互通）已在 PLATFORMS/WINDOWS/RELEASE_NOTES 写明。
+- asar 内 `package.json` 被 electron-builder 裁剪掉 devDependencies/build/scripts，属正常产物行为；version/main/productName 与仓库一致。
+- Source.zip 与 tag 完全一致，但按设计不含 `windows/node_modules`，Windows 构建需先 `npm install`（PLATFORMS 已说明）。
+- Release body 中相对链接（如 `CREDITS.md`、`docs/...`）按 GitHub release 渲染规则应指向仓库；未在 publish 后用浏览器逐一点击（draft 未公开，无法匿名校验），发布后建议顺手点一下 top 链接。
+- macOS 发布包与 2.0.0 tag 之间没有 Source/Assets/build.sh 改动（diff 为空），二进制与源码对应关系成立；未做逐字节 reproducible build 复现（OS 构建元数据可能不同）。
+
+## J. task-10 清单覆盖
+
+| # | 要求 | 结果 |
+| --- | --- | --- |
+| 1 | Windows `npm run smoke` PASS；main/preload 不联网/不申请权限；无 Windows 实机已写明 | PASS（§C） |
+| 2 | Windows exe/zip PE32/NSIS、内容/assets/docs、sha 与 sha256 一致 | PASS（§D） |
+| 3 | Source.zip 内容完整、无 node_modules/upstream/dist/build、可独立构建 | PASS（§E） |
+| 4 | macOS dmg sha/verify/挂载自检 222/干净偏好；zip 含 app | PASS（§F） |
+| 5 | Release 文案/署名/三平台下载表/校验值/Windows 限制；README/CREDITS/PLATFORMS 一致 | PASS（§H） |
+| 6 | GitHub public/main/tag=f084267/draft assets 6 个名称/大小/sha 一致；保持 draft | PASS（§G，未 publish） |
+| 7 | 报告追加 + complete task-10 | 本节即追加内容 |
+
+**2.0.0 跨平台 Release 验收结论：PASS，可以发布。** GitHub draft 保持 draft、未执行 publish；无阻塞问题。建议 publish 前由 Lead 最后确认 release 标题/正文语言与仓库 main 状态即可。**
