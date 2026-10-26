@@ -68,6 +68,8 @@ protocol PetHost: AnyObject {
     func previewImage() -> NSImage?
     func showStartupHint()
     var stateDescription: String { get }
+    func applySizeTier(_ tier: Int)   // 0=小 1=中 2=大，按各只自己的三档
+    var sizeTier: Int { get }
 }
 
 protocol PetHubContext: AnyObject {
@@ -191,6 +193,8 @@ caption     = (3, height - captionBand + 4, width - 6, 34)
   薄肌 ▸ / 太对了 ▸ / 峰哥 ▸ / 果冻 ▸   （各自完整菜单）
   ───
   捧哏联动[✓]（全局开关，持久化到 hub.relayEnabled）
+  大小联动[✓]（默认开，持久化到 hub.linkSize；改一只四只一起变）
+  统一大小 ▸ 小 / 中 / 大（一键四只同档）
   全部显示 / 全部隐藏 / 全部归位
   ───
   关于桌宠合集 / 退出桌宠合集
@@ -199,9 +203,10 @@ caption     = (3, height - captionBand + 4, width - 6, 34)
 - 关于面板：版本、四只句数、上游仓库链接、素材版权声明
 - CLI（`applicationDidFinishLaunching` 里分流，跑完 `exit`）：
   - `--self-test`：四只 controller 的 `selfTest` + 主控断言（relay 机制、三只 reaction 策略、
-    菜单结构、显隐、默认布局：三只语音窗口 + 果冻可见图标互不重叠且完整落在屏幕可见区），
+    菜单结构、大小联动（含真实菜单 action 路径）、显隐、默认布局：三只语音窗口 + 果冻可见图标
+    互不重叠且完整落在屏幕可见区），
     最后一行 `PASS`，失败 `FAIL: [...]`，退出码 1
-  - `--chain-test`：打开 trace、静音、模拟点薄肌，等 18 秒（全程约 21 秒），校验口头记录是
+  - `--chain-test`：打开 trace、静音、模拟点薄肌，等 18 秒（全程约 21 秒；偶发丢句自动重试一次），校验口头记录是
     `[shaolan hop0 root shaolan, sunpet hop1, fengge hop2, sunpet hop3]` 且没有第五句 → `PASS`
   - `--dump-state`：每只一行 `id visible=... size=... pos=...`，加 `relay=on/off`
   （`--diagnostic` 类模式只读：不写偏好、不自动开机身摇晃）
@@ -221,13 +226,13 @@ caption     = (3, height - captionBand + 4, width - 6, 34)
 4. 拷贝 `Assets/shaolan|sun|fengge|jelly` → `Contents/Resources/<同名>`，
    `Assets/AppIcon.icns` → Resources，`LICENSE`+`licenses/` → Resources
 5. Info.plist：CFBundleExecutable=PetHub、CFBundleIdentifier=local.pethub.app、
-   CFBundleName/DisplayName=桌宠合集、ShortVersion=1.0.0、Version=1、LSMinimumSystemVersion=14.0、
+   CFBundleName/DisplayName=桌宠合集、ShortVersion=1.1.0、Version=1、LSMinimumSystemVersion=14.0、
    LSUIElement=true、NSHighResolutionCapable=true、CFBundleIconFile=AppIcon
 6. `xattr -cr`，`codesign --force --sign -`
 7. 跑 `--self-test`，最后一行必须是 PASS（`--no-self-test` 可跳过）
 8. `--package`：`ditto` 出 zip；stage 目录放 app + `Applications` 软链；
-   `hdiutil create -volname 桌宠合集 -srcfolder stage -format UDZO dist/PetHub-1.0.0.dmg`；
-   `shasum -a 256` 写 `PetHub-1.0.0.sha256`
+   `hdiutil create -volname 桌宠合集 -srcfolder stage -format UDZO dist/PetHub-1.1.0.dmg`；
+   `shasum -a 256` 写 `PetHub-1.1.0.sha256`
 
 `install.sh`：`--build` 编译并装进 /Applications、启动；`--uninstall` 退出并删除；默认从 `build/` 装。
 
@@ -257,5 +262,6 @@ claude-mark.png）排成 2×2，画进 1024×1024 圆角底板（浅色渐变/�
 - [ ] 真机启动：四只同时在屏幕右下角一排；三只语音窗口 + 果冻的可见图标互不重叠
       （果冻 560×560 透明窗口允许伸出屏幕，判的是图标 128×128 的可见区域）；菜单栏只有一个「桌宠」
 - [ ] 点每只都能出声/形变；右键菜单完整；隐藏/显示/全部归位可用
+- [ ] 大小联动：默认开时改任意一只的大小四只同档变化；关掉后各改各的；「统一大小」一键四只
 - [ ] `hdiutil verify dist/*.dmg` 通过；挂载后 `桌宠合集.app` 能启动并自检
 - [ ] README/TECHNICAL/NOTICE 与实现一致，无夸大

@@ -580,7 +580,27 @@ final class AudioPetController: NSObject, PetHost, AVAudioPlayerDelegate {
                                 height: profile.layout.panelHeight(for: size, faceRatio: imageRatio))
             panel.setContentSize(target)
         }
-        settings.set(Double(size), "size")
+        if !diagnostic { settings.set(Double(size), "size") }
+        savePosition()
+        if let tier = profile.sizeChoices.firstIndex(where: { Int($0.side) == sender.tag }) {
+            context?.petSizeTierChanged(id, tier: tier)
+        }
+    }
+
+    /// 0=小、1=中、2=大。各只按自己的三档映射，不强行拉成同样像素。
+    var sizeTier: Int {
+        profile.sizeChoices.firstIndex(where: { Int($0.side) == Int(size) }) ?? 1
+    }
+
+    /// 主控「统一大小」/ 别的桌宠改了大小后调这里，只应用不回调，避免循环。
+    func applySizeTier(_ tier: Int) {
+        guard profile.sizeChoices.indices.contains(tier) else { return }
+        size = profile.sizeChoices[tier].side
+        if let panel {
+            panel.setContentSize(NSSize(width: size,
+                                        height: profile.layout.panelHeight(for: size, faceRatio: imageRatio)))
+        }
+        if !diagnostic { settings.set(Double(size), "size") }
         savePosition()
     }
 

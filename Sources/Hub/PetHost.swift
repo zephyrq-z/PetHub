@@ -18,6 +18,9 @@ protocol PetHubContext: AnyObject {
     /// 桌宠开口说话时回报给主控，由主控转发到进程内联动通道。
     func forwardSpeech(_ speech: PetSpeech)
     func quitApp()
+    /// 「大小联动」总开关：打开时改任意一只的大小会同步到另外三只。
+    var linkSizeEnabled: Bool { get }
+    func petSizeTierChanged(_ id: PetID, tier: Int)
 }
 
 /// 合集里的一只桌宠。语音桌宠和果冻都实现这一套接口，主控不关心具体实现。
@@ -48,6 +51,9 @@ protocol PetHost: AnyObject {
     func showStartupHint()
     /// `--dump-state` 用的一行状态。
     var stateDescription: String { get }
+    /// 统一大小：0=小、1=中、2=大（按各只自己的三档映射）。
+    func applySizeTier(_ tier: Int)
+    var sizeTier: Int { get }
 }
 
 extension PetHost {
@@ -57,4 +63,6 @@ extension PetHost {
     }
 
     func showStartupHint() {}
+    func applySizeTier(_ tier: Int) {}
+    var sizeTier: Int { 1 }
 }

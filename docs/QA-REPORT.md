@@ -319,3 +319,145 @@ cd /tmp/qa-pet-repo && ./build.sh --package && (cd dist && shasum -a 256 -c PetH
 | O3 | 移植归一化：太对了普通点击字幕 +0.4（上游 +0.5）；大小夹取范围按菜单档位 | 极低 | 备查 | 无用户可见功能影响 |
 
 **最终结论：实现、构建、自检、四步链、打包、DMG、单实例、布局、显隐/联动边界、文档/许可一致性全部通过。F1（实现）与 D1/D2（文档）均已修复并复核，无遗留阻塞项。验收结论：PASS。**
+
+---
+
+# 1.1.0「大小联动」增量验收（2026-10-26 14:00–14:18）
+
+> 本节是 1.0.0 交付之后的增量验收；上方 1.0.0 历史章节与证据原样保留、未被覆盖。验收对象为 13:55 冻结的 `build/桌宠合集.app` 与 `dist/PetHub-1.1.0.dmg`（sha256 `0a897f7c…`）。
+> 仓库在验收前已建 git（`v1.0.0` tag + 未提交工作树），变更可用 `git diff v1.0.0 --stat` 复核（10 个文件，+192/−36）。
+
+## A. 结论
+
+**1.1.0 验收通过（PASS）**：大小联动（改一只四只同档）、统一大小、开关默认开与持久化、四只 size 偏好写入、关掉联动只改自己、诊断只读、无递归/重复写、`--self-test` 201 项、`--chain-test`、dump/preview、单实例、DMG、文档一致性全部实测通过，无阻塞缺陷。
+
+| 项目 | 结果 |
+| --- | --- |
+| 大小联动（真实总菜单/桌宠菜单 action → 四只同档 + 四只偏好） | PASS |
+| 关掉联动后各改各的（真实 hub 读回 `hub.linkSize=false`） | PASS |
+| 「统一大小 → 小/中/大」真实 action 四只同档 + 写四只偏好 | PASS |
+| 默认开（干净域无 `hub.linkSize` 时第一次 toggle 写 false）+ 持久化读写回 | PASS |
+| 无递归/重复写（连续 30 次改大小不漂移、不卡死） | PASS |
+| 诊断模式只读（size/iconSide/位置都不写） | PASS |
+| `./build.sh` 最后一行 PASS / `--self-test` 201 项 | PASS（独立 /tmp 副本复跑；工作区产物直跑 201） |
+| `--chain-test`（4 句、hop 0/1/2/3、root 全薄肌、无第五句、允许一次重试） | PASS（3/3 首跑即过） |
+| `--dump-state` / `--preview`（四张 2x + 合影，version=1.1.0） | PASS |
+| DMG（sha/verify/卷名/Info.plist 1.1.0/挂载自检 201/只读） | PASS |
+| 文档（1.1.0、大小联动、hub.linkSize、201 项、重试说明） | PASS |
+
+## B. 变更范围与静态审查
+
+`git diff v1.0.0 --stat`：`AudioPetController.swift +22`、`PetHost.swift +8`、`PetHubApp.swift +121`、`JellyPetController.swift +17`、`main.swift` 版本号、`build.sh` 版本号、README/TECHNICAL/AGENTS/DESIGN。
+
+- 协议：`PetHubContext` 新增 `linkSizeEnabled` / `petSizeTierChanged(_:tier:)`；`PetHost` 新增 `applySizeTier(_:)` / `sizeTier`（带默认实现），[Sources/Hub/PetHost.swift:21-23](../Sources/Hub/PetHost.swift)、[:54-56](../Sources/Hub/PetHost.swift)。
+- 主控：[Sources/Hub/PetHubApp.swift:34](../Sources/Hub/PetHubApp.swift) `linkSizeEnabled = hubDefaults.object(forKey:"hub.linkSize") as? Bool ?? true`（默认开）；[:133-137](../Sources/Hub/PetHubApp.swift) `petSizeTierChanged` 只在 `linkSizeEnabled` 时对 `order` 里除自己外的三只 `applySizeTier`；[:233-236](../Sources/Hub/PetHubApp.swift) toggle 持久化；[:238-241](../Sources/Hub/PetHubApp.swift) `setAllSizeTiers` 对四只应用；[:197-211](../Sources/Hub/PetHubApp.swift) 总菜单接线（「大小联动（改一只，四只一起变）」+「统一大小 ▸ 小/中/大」+ `commonSizeTier` 勾选）。
+- 语音桌宠：[AudioPetController.swift:572-607](../Sources/Audio/AudioPetController.swift) `setSize` 写自己 + `savePosition` + 回报 tier；`applySizeTier` 只应用不回调；`sizeTier` 按 `sizeChoices` 映射（190/260/340、130/180/240、190/260/340）。
+- 果冻：[JellyPetController.swift:536-554](../Sources/Jelly/JellyPetController.swift) `changeSize` 写 `pet.jelly.iconSide` + 回报 tier；`applySizeTier` 只应用不回调；档位 104/128/160。
+- 递归/循环审查：`applySizeTier` 的实现不再调用 `context`，主控回调只从用户菜单 action 进入一次，链路是「菜单 → setSize/changeSize → context.petSizeTierChanged → 其余三只 applySizeTier」单向，不存在回环；`guard linkSizeEnabled` 让关闭时只写自己。
+- 持久化键：语音三只 `pet.<id>.size`（Double），果冻 `pet.jelly.iconSide`（Int，沿用 1.0.0 已文档化的键）；四只互不覆盖。
+- 诊断只读：音频 `diagnostic = testing || previewing || dumping || chainTesting`（[AudioPetController.swift:64](../Sources/Audio/AudioPetController.swift)）；果冻同样四件套（[JellyPetController.swift:577-582](../Sources/Jelly/JellyPetController.swift)），`setSize`/`applySizeTier`/`persist`/`savePosition` 均有 `!diagnostic` 保护。
+- chain-test 重试：[PetHubApp.swift:530-590](../Sources/Hub/PetHubApp.swift) 首次不足 4 句时（接话让位属设计内放弃）等 1s 重试一次，第二次仍失败才 FAIL；成功仍 `exit(0)`。产品路径（播放/联动）无改动。
+
+## C. 自检 / 只读（工作区 1.1.0 构建）
+
+```text
+$ defaults delete local.pethub.app
+$ build/桌宠合集.app/Contents/MacOS/PetHub --self-test
+== 201 项检查 ==
+PASS                      # exit 0，OK=201，FAIL=0
+$ defaults read local.pethub.app
+Domain local.pethub.app does not exist      ← 干净域跑完不写偏好
+```
+
+新增 5 项全 OK：`统一大小：四只一起到「大」`、`大小联动：改一只，其余三只跟着变`、`菜单「统一大小 → 大」四只一起变`、`真实菜单：改薄肌大小，其余三只跟着变`、`关掉大小联动后各改各的`；总菜单结构断言从 15 项涨到 17 项仍 OK。
+
+## D. 真实主控 harness（PetHubApp 正常启动，非诊断）
+
+用项目 `Sources/` 编出独立 app（bundle id `local.pethub.hub-harness`，资源拷贝自 1.1.0 build），真实跑 `PetHubApp` 正常启动，通过 `NSApp.sendAction` 走真实菜单 action，偏好落独立域（不碰真实 `local.pethub.app`）。
+
+**Phase 1（干净域，17/17 PASS）**：
+- 干净域无 `hub.linkSize`；第一次点「大小联动」写入 `false`（证明默认是开），再点写回 `true`；
+- 联动开：点薄肌菜单「人物大小→大」→ 三只语音窗口 340/240/340，四只偏好 `pet.shaolan.size=340`、`pet.sunpet.size=240`、`pet.fengge.size=340`、`pet.jelly.iconSide=160`（没有误写果冻位置）；
+- 关联动：薄肌菜单「小」→ 只有薄肌窗口 190、其余 240/340 不动，只有 `pet.shaolan.size` 变 190；
+- 总菜单「统一大小→中」真实 action → 三只窗口 260/180/260、四只偏好 260/180/260/128。
+
+**Phase 2（预置 `hub.linkSize=false` 后新进程启动，9/9 PASS）**：
+- 启动读回 false；点薄肌菜单「大」→ 只有薄肌 340/偏好 340，另外三只不动；
+- 打开联动写回 true；再由太对了菜单「小」发起 → 四只 190/130/190/104，四只偏好同步写入。
+
+日志：`/tmp/qa4-hub-phase1.log`、`/tmp/qa4-hub-phase2b.log`。
+
+## E. 控制器层 harness（23/23 + 5/5 PASS）
+
+同一套 Sources 编出的第二个 harness（独立 suite），覆盖真实菜单 action + 偏好 + 窗口宽度：联动开改一只 → 340/240/340/160 且四只偏好写入；连续 30 次小/中/大循环不递归/不漂移；统一大小写四只；关联动只改自己；果冻发起联动也带动三只；全部 shutdown 后重建四只 → 尺寸从偏好恢复到最后档位（340/240/340/160）。
+诊断模式（`--self-test` 参数）下同样是真实菜单 action，内存尺寸变化但 suite 里**没有** size/iconSide/位置键（只留下 harness 自己为静音写的 volume，不是应用写的）。
+
+日志：`/tmp/qa4-harness-normal.log`、`/tmp/qa4-harness-diag.log`。
+
+## F. chain-test
+
+3 次连续实测均 PASS，首跑即 4 句、无第五句、未触发重试：
+
+```text
+$ build/桌宠合集.app/Contents/MacOS/PetHub --chain-test
+[chain] 第 1 次：3 秒后模拟点一下薄肌，等四步链跑完
+[chain]   0: 薄肌 句=31 hop=0 root=薄肌 ...
+[chain]   1: 太对了 句=11 hop=1 root=薄肌 ...
+[chain]   2: 峰哥 句=9 hop=2 root=薄肌 ...
+[chain]   3: 太对了 句=13 hop=3 root=薄肌 ...
+PASS 四步捧哏链：…；real 0m19.240s；跑完偏好域不存在
+```
+
+`--chain-test` 的重试分支未强制触发（正常 3/3 通过），已代码审查 + 文档核对：只重试一次、第二次仍失败才 FAIL、成功退出码 0；重试仅影响测试，不改产品行为。日志：`/tmp/qa4-chain-{1,2,3}.log`。
+
+## G. dump-state / preview / 单实例 / 窗口
+
+- `--dump-state` 首行 `version=1.1.0 relay=on pets=4`，四只齐全；默认尺寸 260x296 / 180x228 / 260x291，果冻 560 pos=1640,88；写 `pet.*.size`/`pet.jelly.iconSide` 后恢复为 340x376 / 240x288 / 340x369，且 dump-state 前后偏好逐字节不变（只读）。
+- `--preview` 四张 2x（520×592 / 360×456 / 520×582 / 1120×1120）+ 合影 2880×1280，与 1.0.0 一致；跑完不写偏好。
+- 单实例回归：第一个正常实例在跑时第二个 0.14s 退出、窗口数不变；CGWindowList 见 4 只 layer=3 窗口（默认尺寸 768/1064/1280,24，果冻 560 透明窗口 1360,−192，图标中心 1640,88）+ 菜单栏状态项窗口。
+
+## H. DMG 与独立构建
+
+交付 dmg：
+
+```text
+sha256  0a897f7c26783a7c1c8bea37b74b11e3ca6e0bb754020644dfa46e60c7bd3fcc  PetHub-1.1.0.dmg（与 Lead 提供值一致，shasum -c OK）
+hdiutil verify → checksum is VALID；UDZO；卷名「桌宠合集」
+内容：桌宠合集.app + Applications -> /Applications
+Info.plist：local.pethub.app / 桌宠合集 / CFBundleShortVersionString=1.1.0 / CFBundleVersion=1 / LSUIElement=true / CFBundleIconFile=AppIcon
+Resources：四只素材 + AppIcon.icns + LICENSE + NOTICE.md + licenses/
+挂载后直接 --self-test：201 OK / 0 FAIL / PASS / exit 0，跑完 local.pethub.app 域不存在
+dist/ 只有 PetHub-1.1.0.{dmg,zip,sha256} 一套；1.0.0 在 /tmp/PetHub-1.0.0-archive
+```
+
+独立复跑（`/tmp/qa4-pet-repo`，rsync 交付源 + 排除 build/dist/.git/upstream，不碰交付目录）：`./build.sh --package` → 201 OK、末行 PASS、31.3s；dist 只出 1.1.0 一套，sha256 -c OK；该 dmg 挂载后 `--self-test` 201 PASS、Info.plist 1.1.0、不写偏好。
+
+## I. 文档一致性
+
+- README：安装/构建命令改 1.1.0；玩法表新增「大小联动 / 统一大小」行；`docs/preview-all.png` 链接存在（2880×1280）。
+- TECHNICAL：新增大小联动段、`hub.linkSize` 偏好行、`--self-test 目前 201 项`、`--chain-test` 重试说明、dump 首行 1.1.0、构建版本 1.1.0。
+- AGENTS：版本 1.1.0、`dist/PetHub-1.1.0.*`、大小联动边界（`PetHost.applySizeTier/sizeTier`）、`hub.linkSize`、chain-test 重试说明。
+- docs/DESIGN：协议新增 `applySizeTier/sizeTier`、菜单结构加「大小联动/统一大小」、自检增加真实菜单 action、chain-test 18s+重试、ShortVersion/dmg 名 1.1.0、验收清单加大小联动。
+- NOTICE/UPSTREAM/licences 与 1.1.0 无关且未被改坏（仍与 1.0.0 验收一致）；文档里无残留 `1.0.0`/`196` 引用；README/TECHNICAL 相对链接全部存在。
+
+## J. 非阻塞观察（本轮新增）
+
+- O4：默认尺寸下四只可见区域仍不重叠（自检断言 + CGWindowList 复核）；但「大」档时窗口会互相压住（薄肌 340 与太对了 240 窗口重叠 34pt，峰哥 340 与果冻 160 图标重叠 20pt），这是 DESIGN §5「改大小后允许溢出槽位、不挤压邻居」的预期结果，自检只断言默认布局，不算 1.1.0 缺陷。
+- O5：`sizeTier` 在尺寸不等于任何菜单档位时回退为 1（中）；只有手工改偏好会产生这种值（UI 只能选三档），此时「统一大小」的勾选状态可能与实际像素不符，无正常路径影响。
+- O6：打开联动不会立刻把四只已不同的大小拉齐，下一次改大小才同步（需求描述是“改一只四只一起变”，与 README/TECHNICAL 一致）。
+- O7：TECHNICAL 写重试后“最长约 42 秒”，按 3+18+1+3+18 实际最坏约 43 秒（“约”可接受，未改文档）。
+- 盲区：本会话无辅助功能/屏幕录制权限，真实鼠标点菜单/肉眼动画未自动化；本轮用“真实 PetHubApp + `NSApp.sendAction` 走真实菜单 action”替代点击路径，窗口尺寸从 `NSWindow.frame`/CGWindowList 读取；chain-test 重试分支未强制触发。
+
+## K. task-4 清单覆盖
+
+| # | 要求 | 结果 |
+| --- | --- | --- |
+| 1 | build.sh PASS / self-test 201 / 干净偏好不写 | PASS（工作区 201 + 独立 /tmp 构建 201，两处都 Domain does not exist） |
+| 2 | 静态审查联动（递归/关闭各改各的/档位/持久化/默认开/GUI 接线） | PASS（§B；真实 action 已动态复核） |
+| 3 | 动态联动与偏好（开/关/统一/持久化） | PASS（§D、§E） |
+| 4 | chain-test / dump-state / preview | PASS（§F、§G；chain 3/3 首跑过） |
+| 5 | DMG（sha/verify/卷名/1.1.0/挂载自检/只读/dist 唯一） | PASS（§H） |
+| 6 | 文档一致性 | PASS（§I） |
+| 7 | 报告追加 + complete task-4 | 本节即追加内容 |
+
+**1.1.0 增量验收结论：PASS。无阻塞缺陷；交付物可发布。**

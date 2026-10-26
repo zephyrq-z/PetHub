@@ -6,7 +6,7 @@ let arguments = CommandLine.arguments
 
 if arguments.contains("--help") || arguments.contains("-h") {
     print("""
-    桌宠合集 PetHub 1.0.0
+    桌宠合集 PetHub 1.1.0
     薄肌 · 太对了 · 峰哥 · 果冻，四只桌宠住在一个 App 里。
 
     用法：PetHub [选项]

@@ -535,7 +535,22 @@ final class JellyPetController: NSObject, PetHost {
 
     @objc private func changeSize(_ sender: NSMenuItem) {
         iconSide = CGFloat(sender.tag)
-        settings.set(Int(iconSide), SettingsKey.iconSide)
+        if !diagnostic { settings.set(Int(iconSide), SettingsKey.iconSide) }
+        if let tier = Const.sizeChoices.firstIndex(where: { Int($0.side) == sender.tag }) {
+            context?.petSizeTierChanged(.jelly, tier: tier)
+        }
+    }
+
+    /// 0=小、1=中、2=大。
+    var sizeTier: Int {
+        Const.sizeChoices.firstIndex(where: { Int($0.side) == Int(iconSide) }) ?? 1
+    }
+
+    /// 主控「统一大小」/ 别的桌宠改了大小后调这里，只应用不回调。
+    func applySizeTier(_ tier: Int) {
+        guard Const.sizeChoices.indices.contains(tier) else { return }
+        iconSide = Const.sizeChoices[tier].side
+        if !diagnostic { settings.set(Int(iconSide), SettingsKey.iconSide) }
     }
 
     @objc private func hidePet() {
