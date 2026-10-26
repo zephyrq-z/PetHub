@@ -2,7 +2,17 @@
 
 <p align="center">薄肌 · 太对了 · 峰哥 · 果冻，四只桌宠住在一个 App 里。点一下就说，凑在一起会接话。2.0 起，薄肌还能换成你自己的角色。</p>
 
-<p align="center">仅 macOS 14+ · Apple Silicon ｜ 一个 App · 一个 dmg ｜ 不联网 · 不占 Dock</p>
+<p align="center">macOS 14+（Apple Silicon）/ Windows 10+ ｜ 一个 App · 一个安装包 ｜ 不联网 · 不占 Dock</p>
+
+> **⚠️ 这是整合项目，不是原创角色项目。**
+> 薄肌 / 太对了 / 峰哥 / 果冻的角色、原声、头像和原始玩法来自下面四个独立开源仓库，
+> 版权归各原作者；本项目只做了四合一、架构整理、自定义内容包和跨平台封装。
+> 完整署名、许可证边界和素材权利见 [CREDITS.md](CREDITS.md)。
+>
+> [ShaolanPet](https://github.com/Ganzhe2028/ShaolanPet) ·
+> [SunPet](https://github.com/Ganzhe2028/SunPet) ·
+> [FengGe-Desktop-Pet](https://github.com/Ganzhe2028/FengGe-Desktop-Pet) ·
+> [JellyPet](https://github.com/aurelius358/JellyPet)
 
 <table align="center" width="100%">
 <tr>

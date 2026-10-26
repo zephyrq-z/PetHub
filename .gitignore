@@ -1,7 +1,13 @@
 build/
 dist/
-.dSYM/
-*.dSYM
 .DS_Store
+*.dSYM/
 # 上游四个仓库仅作对照，不并进合并后的仓库
 upstream/
+
+# Windows Electron 版的依赖和构建产物
+windows/node_modules/
+windows/assets/
+windows/build/
+windows/dist/
+windows/*.exe
