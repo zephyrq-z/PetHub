@@ -1,0 +1,7 @@
+build/
+dist/
+.dSYM/
+*.dSYM
+.DS_Store
+# 上游四个仓库仅作对照，不并进合并后的仓库
+upstream/
