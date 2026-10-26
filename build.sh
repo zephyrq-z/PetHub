@@ -5,7 +5,7 @@
 #   ./build.sh --package       另外产出 dist/ 下的 zip、dmg 和 sha256 校验文件
 #   ./build.sh --no-self-test  跳过自检（没有图形会话的环境里用）
 #
-# 环境变量：PET_VERSION（默认 1.3.0）、PET_BUILD（默认 1）
+# 环境变量：PET_VERSION（默认 2.0.0）、PET_BUILD（默认 1）
 # 成功时最后一行输出 PASS（用了 --no-self-test 则没有）。
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -13,7 +13,7 @@ cd "$(dirname "$0")"
 APP_NAME="桌宠合集"
 EXECUTABLE="PetHub"
 BUNDLE_ID="local.pethub.app"
-VERSION="${PET_VERSION:-1.3.0}"
+VERSION="${PET_VERSION:-2.0.0}"
 BUILD_NUMBER="${PET_BUILD:-1}"
 DEPLOY_TARGET="arm64-apple-macosx14.0"
 BUNDLE="build/$APP_NAME.app"
@@ -60,7 +60,7 @@ compile() {
         sources+=("$file")
     done < <(find Sources -type f -name '*.swift' -print | sort)
     [ "${#sources[@]}" -gt 0 ] || die "Sources/ 里没有 .swift 文件，仓库不完整。"
-    [ -f Sources/main.swift ] || die "缺少 Sources/main.swift（程序入口）。"
+    find Sources -type f -name "main.swift" | grep -q . || die "缺少 main.swift（程序入口）。"
 
     rm -rf "$BUNDLE"
     mkdir -p "$BUNDLE/Contents/MacOS" "$BUNDLE/Contents/Resources"

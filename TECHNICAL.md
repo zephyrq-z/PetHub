@@ -1,30 +1,42 @@
-# 桌宠合集 · 技术文档
+# 桌宠合集 · 技术文档（v2.0.0）
 
 只想装上玩的话看 [README](README.md)。这一份写给要自己编译、改代码、加角色，或者被派来验证这个 App 的 agent。
+分层与内核复用看 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)，内容包格式看 [docs/PETPACK.md](docs/PETPACK.md)，
 素材权利在 [NOTICE.md](NOTICE.md)，上游来源在 [docs/UPSTREAM.md](docs/UPSTREAM.md)。
 
 ## 1. 这是什么架构
 
-四个独立仓库（ShaolanPet / SunPet / FengGe-Desktop-Pet / JellyPet）合并成**一个进程**：
+2.0 把代码拆成**可复用内核**（PetKit）和**成品 App**（PetHub）：
 
 ```
-main.swift
-  └─ NSApplication（accessory，无 Dock 图标）
-       └─ PetHubApp（AppDelegate + PetHubContext + 所有 CLI 模式）
-            ├─ PetRelay          进程内捧哏广播（替代原 Bridge.swift 的 DistributedNotificationCenter）
-            ├─ PetLayout         首次启动 / 全部归位时的右下角站位
-            ├─ PetSettings       每只桌宠一份偏好，键名自动加 pet.<id>. 前缀
-            ├─ AudioPetController × 3（薄肌 / 太对了 / 峰哥）
-            │    └─ AudioPetProfiles（三份 profile）、AudioPetViews、Motion（仅太对了）
-            └─ JellyPetController × 1
-                 └─ JellyModel（弹簧）、Jelly 视图/渲染
+Sources/PetKit/                    通用内核
+  PetHost.swift                    PetHost / PetHubContext 协议、PetError、PetSizing、默认实现
+  PetIdentity.swift                PetID（四只内置角色）、PetSettings（pet.<id>. 前缀）
+  PetRelay.swift                   PetSpeech、PetRelay（进程内 hop/root 广播）
+  PetPack.swift                    内容包模型/校验/安装（PetPackStore）
+  SizeSliderView.swift             菜单里的 50%–180% 大小滑块
+  Audio/AudioPetController.swift   三只语音桌宠的通用引擎
+  Audio/AudioPetViews.swift        AudioPetPanel / 头像 / 字幕
+  Audio/AudioPetProfiles.swift     三份 profile、Clip、reaction / 捧哏池
+  Audio/Motion.swift               太对了的 SPU 加速度计 + 摇晃 helper
+  Jelly/JellyModel.swift           果冻弹簧与软限位
+  Jelly/JellyPetController.swift   果冻窗口、点击区域、CIBumpDistortion、菜单、自检
+
+Sources/PetHub/                    成品 App
+  main.swift                       入口：-h / --motion-helper / --probe-sensor / NSApp.run
+  PetHubApp.swift                  主控 + 菜单栏 + 排列 + CLI + 自检 + 内容包接线
+  PetLayout.swift                  四只的默认站位
+  CustomHeadImporter.swift         「自定义桌宠」编辑窗口
 ```
 
-- 三只语音桌宠共用 `AudioPetController` 这一份引擎，差异全部收在 profile 里；果冻单独一套。
-- 主控通过 `PetHost` 协议操作四只（`start` / `setVisible` / `makeMenu` / `moveToDefaultPosition` /
-  `setRelayEnabled` / `handleRelay` / `selfTest` / `shutdown` / `previewImage` / `showStartupHint`，
-  以及 `stateDescription` 诊断行），通过 `PetHubContext` 反向提供显隐、联动开关、退出。
-- 没有第三方依赖，不联网；唯一的本机通信是「机身摇晃」辅助进程走的 127.0.0.1 回环 UDP。
+依赖方向是 **PetHub → PetKit**。三处已知耦合：`PetLayout` 在 PetHub（PetKit 的默认位置会调它）、
+`PetPack.defaultStoreURL` 写死 PetHub 路径（可用 `PetPackStore(baseURL:)` 注入）、素材按
+`Bundle.main.resourceURL/<assetsFolder>` 读取。详见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
+
+- 三只语音桌宠共用 `AudioPetController`，差异收在 `AudioPetProfiles`；果冻单独一套。
+- 主控通过 `PetHost` 操作四只，通过 `PetHubContext` 反向提供显隐、联动、大小联动、拖动同步。
+- 没有第三方依赖，不联网；唯一的本机通信是「机身摇晃」helper 走的 127.0.0.1 回环 UDP。
+- 整个 `Sources/**/*.swift` 被 `build.sh` 编成一个 `PetHub` 可执行文件；目前没有 `Package.swift`。
 
 要求：Apple Silicon（arm64）+ macOS 14+，`swiftc`（Xcode Command Line Tools 即可，不需要完整 Xcode）。
 App 开 `LSUIElement`，不占 Dock，只有一个菜单栏状态项。
@@ -33,19 +45,21 @@ App 开 `LSUIElement`，不占 Dock，只有一个菜单栏状态项。
 
 | 路径 | 作用 |
 | --- | --- |
-| `Sources/main.swift` | 入口：`-h` 帮助、`--probe-sensor`、内部 `--motion-helper` 分流，然后交给 `PetHubApp` |
-| `Sources/Hub/PetIdentity.swift` | `PetID` 四只的枚举（rawValue 同时是偏好前缀和素材目录名）、`PetSettings` |
-| `Sources/Hub/PetHost.swift` | `PetHost` / `PetHubContext` 协议，主控与四只之间的唯一接口 |
-| `Sources/Hub/PetRelay.swift` | `PetSpeech` 与 `PetRelay`：进程内广播、hop/root 字段、trace 输出 |
-| `Sources/Hub/PetLayout.swift` | 右下角一排的槽位宽度、间距、每只的默认原点 |
-| `Sources/Hub/SizeSliderView.swift` | 菜单里的 50%–180% 大小滑块（`NSMenuItem.view` + 连续 `NSSlider`） |
-| `Sources/Hub/PetHubApp.swift` | 主控：单实例、启动顺序、菜单栏、显隐、联动开关、CLI 模式、自检 |
-| `Sources/Audio/AudioPetController.swift` | 三只语音桌宠的通用引擎：播放、轮播池、接话、菜单、状态、自检 |
-| `Sources/Audio/AudioPetViews.swift` | `AudioPetPanel` / 头像视图 / 字幕，窗口尺寸与布局参数 |
-| `Sources/Audio/AudioPetProfiles.swift` | 三份 profile、`Clip`、动画风格、捧哏池、reaction 策略 |
-| `Sources/Audio/Motion.swift` | 太对了的 SPU 加速度计客户端、摇晃判定、`--motion-helper` 子进程实现 |
-| `Sources/Jelly/JellyModel.swift` | 果冻的按压/拉动阻尼弹簧与软限位 |
-| `Sources/Jelly/JellyPetController.swift` | 果冻窗口、点击区域、CIBumpDistortion 渲染、菜单、自检 |
+| `Sources/PetHub/main.swift` | 入口：`-h` 帮助、`--probe-sensor`、内部 `--motion-helper` 分流，然后交给 `PetHubApp` |
+| `Sources/PetHub/PetHubApp.swift` | 主控：单实例、启动顺序、菜单栏、排列、自定义内容包接线、CLI 模式、自检 |
+| `Sources/PetHub/PetLayout.swift` | 右下角一排的槽位宽度、间距、每只的默认原点 |
+| `Sources/PetHub/CustomHeadImporter.swift` | 「自定义桌宠」编辑窗口：名字 / 头像 / 多条语音 / 中文 |
+| `Sources/PetKit/PetHost.swift` | `PetHost` / `PetHubContext` 协议、`PetError`、`PetSizing`、默认实现 |
+| `Sources/PetKit/PetIdentity.swift` | `PetID` 四只的枚举（rawValue 同时是偏好前缀和素材目录名）、`PetSettings` |
+| `Sources/PetKit/PetRelay.swift` | `PetSpeech` 与 `PetRelay`：进程内广播、hop/root 字段、trace 输出 |
+| `Sources/PetKit/PetPack.swift` | `petpack.json` 模型、校验、安装/导入/删除（`PetPackStore`） |
+| `Sources/PetKit/SizeSliderView.swift` | 菜单里的 50%–180% 大小滑块（`NSMenuItem.view` + 连续 `NSSlider`） |
+| `Sources/PetKit/Audio/AudioPetController.swift` | 三只语音桌宠的通用引擎：播放、轮播池、接话、菜单、状态、自检、自定义内容优先读 |
+| `Sources/PetKit/Audio/AudioPetViews.swift` | `AudioPetPanel` / 头像视图 / 字幕，窗口尺寸与布局参数 |
+| `Sources/PetKit/Audio/AudioPetProfiles.swift` | 三份 profile、`Clip`、动画风格、捧哏池、reaction 策略 |
+| `Sources/PetKit/Audio/Motion.swift` | 太对了的 SPU 加速度计客户端、摇晃判定、`--motion-helper` 子进程实现 |
+| `Sources/PetKit/Jelly/JellyModel.swift` | 果冻的按压/拉动阻尼弹簧与软限位 |
+| `Sources/PetKit/Jelly/JellyPetController.swift` | 果冻窗口、点击区域、CIBumpDistortion 渲染、菜单、自检 |
 | `Tools/make-icon.swift` | 四张脸拼 1024 圆角图标 → `build/AppIcon.iconset` → `Assets/AppIcon.icns` |
 | `build.sh` | 环境检查、编译、资源、Info.plist、签名、自检、`--package` |
 | `install.sh` | 装进 /Applications、去隔离标记、启动；`--uninstall` |
@@ -54,7 +68,7 @@ App 开 `LSUIElement`，不占 Dock，只有一个菜单栏状态项。
 
 | 路径 | 内容 |
 | --- | --- |
-| `Assets/shaolan/` | `face.png`、`clips.json`、`Clips/*.wav`，37 句 |
+| `Assets/shaolan/` | `face.png`、`clips.json`、`Clips/*.wav`，37 句（可被用户内容包替换） |
 | `Assets/sun/` | `face.png`、`clips.json`、`Clips/*.m4a`，28 句 |
 | `Assets/fengge/` | `face.png`、`clips.json`、`Clips/*.wav`，11 句 |
 | `Assets/jelly/` | `claude-mark.png`、`gpt-mark.png`、`gemini-mark.png` |
@@ -65,9 +79,11 @@ App 开 `LSUIElement`，不占 Dock，只有一个菜单栏状态项。
 `PetHubApp.applicationDidFinishLaunching`：
 
 1. 非诊断模式下检查单实例：同 bundle id 已有别的进程就 `terminate`（正常启动只允许一份）。
-2. 读偏好 `hub.relayEnabled`（默认 `true`），设置到 `PetRelay`。
+2. 读偏好 `hub.relayEnabled` / `hub.linkSize` / `hub.groupDrag`，设置到主控和 `PetRelay`。
 3. 按 `PetLayout.order` 建四只 controller：有 profile 的是语音桌宠，否则是果冻。
-4. 逐只 `start()`；素材缺失会抛错，主控弹窗后退出。
+4. 逐只 `start()`。薄肌的 `AudioPetController` 会优先读
+   `~/Library/Application Support/PetHub/HeadPet/` 的自定义内容包，没有再读内置素材；
+   素材/内容包损坏会抛错，主控弹窗后退出。
 5. 给三只语音桌宠注册 relay handler（果冻不参与）。
 6. 把联动开关同步给四只。
 7. CLI 模式在此分流：`--preview` → `--self-test` → `--dump-state` → `--chain-test`，跑完 `exit`。
@@ -122,13 +138,17 @@ struct PetSpeech: Equatable {
 薄肌和峰哥之间没有直接通道，太对了接完峰哥链自然断掉，不会无限接。
 防环靠的是数据本身（`hop` 封顶 + `reaction` 里的 `root` 条件），不是靠「记得别接」。
 
+**自定义薄肌不影响这张表**：`PetSpeech.from` / `root` 存的是 `PetID`，不是显示名字。
+自定义内容替换之后，这只桌宠的 `PetID` 仍是 `.shaolan`，所以 `root` 仍是 `.shaolan`，
+太对了/峰哥的条件一个都不用改；`displayTitle` 只用于菜单、关于面板、提示字幕等显示。
+
 ### 4.4 四步链
 
-点薄肌起头：
+点薄肌（或自定义角色）起头：
 
 | 序 | 谁开口 | hop | root |
 | --- | --- | --- | --- |
-| 1 | 薄肌 | 0 | 薄肌 |
+| 1 | 薄肌 / 自定义角色 | 0 | 薄肌 `.shaolan` |
 | 2 | 太对了 | 1 | 薄肌 |
 | 3 | 峰哥 | 2 | 薄肌 |
 | 4 | 太对了 | 3 | 薄肌 |
@@ -155,12 +175,13 @@ struct PetSpeech: Equatable {
 - 果冻的窗口本身是 560×560 全透明，只有图标附近（半径 `iconSide * 0.47`）接收点击，其余点击穿透给桌面；
   首次图标中心 = 果冻槽位中心，纵向 `bottom + 64`（图标默认边长 128）。
 - 三只语音桌宠：`borderless + nonactivatingPanel`、透明、floating、跟随所有桌面空间 / 全屏、不参与
-  Cmd-Tab。台下布局参数（`AudioFaceLayout`）：薄肌 / 峰哥 inset 8、字幕带 44，头像区按原图比例；
+  Cmd-Tab。布局参数（`AudioFaceLayout`）：薄肌 / 峰哥 inset 8、字幕带 44，头像区按原图比例；
   太对了 inset 12、字幕带 60。字幕白字 13pt（太对了 12pt）、黑底 0.76（0.72）、圆角 9（10），最多两行。
+- 自定义角色沿用薄肌的布局参数，但头像比例参与窗口高度计算；换内容后窗口会按新头像重新定尺寸。
 - 动画：薄肌 / 峰哥竖直压扁 12%、30fps；太对了绕中心 ±0.055 rad 摇晃 + 上浮 3px；
   系统开启「减少动态效果」时不动。果冻全部是弹簧状态（按压 / 局肿 / 拉动 / 回弹），窗口坐标不动。
 - 位置、大小、音量、轮播勾选等都会持久化（见下表），启动时恢复；恢复点不在任何屏幕内时退回默认站位。
-- 大小用滑块调（`Sources/Hub/SizeSliderView.swift`）：范围是各自默认大小的 **50%–180%**，默认 100%。
+- 大小用滑块调（`Sources/PetKit/SizeSliderView.swift`）：范围是各自默认大小的 **50%–180%**，默认 100%。
   总菜单里的滑块直接四只一起变；每只右键菜单里也有一条自己的滑块。四只比例不同，所以滑块存的是
   「相对各自默认大小的比例」，不会强行拉成同样像素。
 - 「大小联动」默认开：拖任意一只菜单里的滑块，另外三只按同一比例一起变；关掉后各改各的。
@@ -194,6 +215,7 @@ struct PetSpeech: Equatable {
 | `excludedIDs` | [Int] | 薄肌首次按素材 `defaultOff`；其余空 | 「轮播内容」里勾掉的句子 |
 | `panelX` / `panelY` | Double | 无 → `PetLayout` | 窗口原点 |
 | `reactionEnabled` | Bool | true | 仅太对了：自己的「捧哏联动」开关 |
+| `contentSignature` | String | 无 | 仅薄肌：当前内容的指纹；变化时重置 `excludedIDs` / `pinnedID` |
 
 果冻（前缀 `pet.jelly.`）：
 
@@ -211,8 +233,10 @@ struct PetSpeech: Equatable {
 | `hub.linkSize` | Bool | true | 「大小联动」：每只菜单里的滑块是否同步到另外三只 |
 | `hub.groupDrag` | Bool | false | 「绑定相对位置」：拖一只语音桌宠时四只一起平移；点「捧哏排列」会自动打开 |
 
+自定义内容包的文件不在偏好里，而在
+`~/Library/Application Support/PetHub/HeadPet/`（见第 9 节）。
 旧的四只独立 App 的偏好不会自动迁过来：bundle id 不同（例如 `local.shaolan.desktop-pet`），
-合集按自己的默认布局重新摆。自检模式只读不写。
+合集按自己的默认布局重新摆。诊断模式只读不写。
 
 ## 7. CLI 诊断
 
@@ -224,20 +248,17 @@ struct PetSpeech: Equatable {
 | 命令 | 作用 | 输出 / 退出码 |
 | --- | --- | --- |
 | `-h` / `--help` | 打印用法 | 退出码 0 |
-| `--self-test` | 四只 controller 自检 + 主控断言（relay、三只 reaction、菜单、大小联动、显隐、默认布局、诊断字段），目前 213 项 | 每项 `OK` / `FAIL`，最后一行 `PASS` 或 `FAIL: [...]`；失败退出码 1 |
+| `--self-test` | 四只 controller 自检 + 主控断言（relay、三只 reaction、菜单、大小联动、排列、绑定拖动、显隐、默认布局、自定义内容包安装/读取/替换/导入/编辑器/恢复），默认内置四只时 222 项；装了自定义内容包后，逐句音频检查的数量会随语音条数变化；自定义内容只要求音频 >0.1s（与 PetPack 一致），内置素材仍 0.25–8s | 每项 `OK` / `FAIL`，最后一行 `PASS` 或 `FAIL: [...]`；失败退出码 1 |
 | `--chain-test` | 模拟点薄肌，实测四步捧哏链 | trace + `[chain]` 记录，成功 `PASS 四步捧哏链：…`，失败 `FAIL`；约 21 秒，偶发丢句自动重试一次 |
-| `--dump-state` | 打印当前状态后退出 | 首行 `version=1.3.0 relay=on pets=4`，随后每只一行，见下 |
+| `--dump-state` | 打印当前状态后退出 | 首行 `version=2.0.0 relay=on pets=4`，随后每只一行，见下 |
 | `--preview <目录>` | 四只各离屏渲染一张 `preview-<id>.png`（2x），再拼 `preview-all.png`（一排）和 `preview-stage.png`（捧哏排列合影），共 6 张 | 打印写出的路径；目录不存在会自动建 |
 | `--trace` | **正常启动**，额外把联动和桌宠的每一跳打到 stdout（受单实例限制、会写偏好） | `[relay] <时间戳> …`、`[trace] <时间戳> pet=<id> …` |
 | `--probe-sensor` | 检查这台 Mac 有没有可用的 SPU 运动传感器 | `sensor available; open result=…; uid=…` 或 `sensor unavailable` |
 
-上述 `--self-test` / `--chain-test` / `--dump-state` / `--preview` 都**只读**：不写偏好、
-不自动开启机身摇晃，也不做单实例拦截，可以在已有实例运行时执行；`--trace` 见上，按正常启动算。
-
-`--dump-state` 的语音桌宠行（示例，数值随实际状态变）：
+`--dump-state` 的语音桌宠行（示例，数值随实际状态变；自定义薄肌时 `content=custom:<名字>`）：
 
 ```text
-shaolan visible=true window=on size=260x296 pos=1780,24 clips=37 pool=8 mode=random pinned=nil volume=0.65 relay=on
+shaolan visible=true window=on size=260x296 pos=1780,24 clips=37 pool=8 mode=random pinned=nil volume=0.65 relay=on content=builtin
 ```
 
 果冻那行只有 `visible / size / pos`（窗口固定 560×560，`pos` 是图标中心，不是窗口原点）：
@@ -255,14 +276,14 @@ shaolan visible=true window=on size=260x296 pos=1780,24 clips=37 pool=8 mode=ran
 `build.sh` 依次做：
 
 1. 检查 Darwin、arm64、macOS 14+、`swiftc`。
-2. `find Sources -name '*.swift' | sort` 收集全部源文件（含 `Sources/main.swift`），
+2. `find Sources -name '*.swift' | sort` 收集全部源文件（含 `Sources/PetHub/main.swift`），
    `swiftc -O -target arm64-apple-macosx14.0 -framework AppKit -framework AVFoundation
    -framework CoreImage -framework IOKit -framework Network …` 输出到
    `build/桌宠合集.app/Contents/MacOS/PetHub`。
 3. 建 `Contents/{MacOS,Resources}`；拷 `Assets/{shaolan,sun,fengge,jelly}` 四个目录、
    `Assets/AppIcon.icns`、`LICENSE`、`NOTICE.md`、`licenses/` 到 Resources。
 4. 写 `Contents/Info.plist`：`CFBundleExecutable=PetHub`、`CFBundleIdentifier=local.pethub.app`、
-   `CFBundleName/DisplayName=桌宠合集`、`CFBundleShortVersionString=1.3.0`、`CFBundleVersion=1`、
+   `CFBundleName/DisplayName=桌宠合集`、`CFBundleShortVersionString=2.0.0`、`CFBundleVersion=1`、
    `LSMinimumSystemVersion=14.0`、`LSUIElement=true`、`NSHighResolutionCapable=true`、
    `CFBundleIconFile=AppIcon`。
 5. `xattr -cr` → `codesign --force --sign -` → `codesign --verify`。
@@ -272,11 +293,11 @@ shaolan visible=true window=on size=260x296 pos=1780,24 clips=37 pool=8 mode=ran
 
 ```bash
 ./build.sh                 # 编译 + 自检 → build/桌宠合集.app，最后一行 PASS
-./build.sh --package       # 另出 dist/PetHub-1.3.0.zip / .dmg / .sha256（卷名「桌宠合集」）
+./build.sh --package       # 另出 dist/PetHub-2.0.0.zip / .dmg / .sha256（卷名「桌宠合集」）
 ./build.sh --no-self-test  # 无图形会话时跳过自检（发布前别用）
 ```
 
-环境变量 `PET_VERSION`（默认 1.3.0）、`PET_BUILD`（默认 1）。dmg 里是
+环境变量 `PET_VERSION`（默认 2.0.0）、`PET_BUILD`（默认 1）。dmg 里是
 「桌宠合集.app」+「Applications」软链，拖进去就是安装。
 
 图标改动后重新生成：
@@ -286,30 +307,90 @@ swift Tools/make-icon.swift   # build/AppIcon.iconset + Assets/AppIcon.icns + /t
 ```
 
 `install.sh`：默认从 `build/` 装（没有就编译）；`--build` 强制重编；`--from 路径.app` 装现成的包；
-`--uninstall` 退出并删掉 `/Applications/桌宠合集.app`（偏好设置保留，不碰四个独立 App）。
+`--uninstall` 退出并删掉 `/Applications/桌宠合集.app`（偏好设置和自定义内容包保留，不碰四个独立 App）。
 
-## 9. 上游映射
+## 9. 自定义内容包与热切换
+
+完整格式见 [docs/PETPACK.md](docs/PETPACK.md)，用户步骤见
+[docs/MAKE_YOUR_OWN_PET.md](docs/MAKE_YOUR_OWN_PET.md)。
+
+### 9.1 数据结构
+
+`Sources/PetKit/PetPack.swift`：
+
+```swift
+struct PetPackClip: Codable, Equatable { var file: String; var label: String }
+
+struct PetPackManifest: Codable, Equatable {
+    var format: Int          // 目前只接受 1
+    var name: String
+    var author: String?
+    var avatar: String       // 相对包根目录
+    var clips: [PetPackClip] // 1–200 条
+}
+
+final class PetPack { let root: URL; let manifest: PetPackManifest ... }
+final class PetPackStore { let baseURL: URL ... }
+```
+
+### 9.2 安装路径与校验
+
+- 默认安装位置：`~/Library/Application Support/PetHub/HeadPet/`
+  （`petpack.json` + `avatar.<扩展名>` + `clips/NN.<扩展名>`）。
+- 校验：`format == 1`、名字非空、头像可解码、1–200 条语音、每条中文非空、
+  每条音频可被 `AVAudioPlayer` 解码且时长 > 0.1 秒、路径为安全相对路径（非绝对、无 `..`）。
+- 安装先写 `HeadPet.tmp-<UUID>`，在临时目录完整校验，再原子替换；旧目录作备份、失败回滚。
+  坏包不会把已经在用的内容弄没。
+- 导入（「导入 petpack.json 文件夹…」）会把文件复制进应用目录，源文件夹之后可删。
+
+### 9.3 热切换流程
+
+`PetHubApp.reloadHeadPet()` → `AudioPetController.reloadContent()`：
+
+1. `stopPlayback()`；
+2. `loadContent()`：`.shaolan` 优先读 `packStore.current()`，没有则回退内置 37 句；
+3. 替换头像、`clips`、`customName`、内容指纹 `contentSignature`，按新头像比例重算窗口尺寸；
+4. `loadPreferences()`：指纹与 `pet.shaolan.contentSignature` 不一致时，清空
+   `excludedIDs` / `pinnedID`（旧句 id 已失效），音量 / 大小 / 位置保留，并写回新指纹（诊断模式不写）；
+5. 重新预解码捧哏句、更新 tooltip，字幕提示「已换成 <名字>」；
+6. 不重建窗口、不注销 relay、不改 `PetID`：四步链和 `root == .shaolan` 完全不变。
+
+恢复原版：`PetPackStore.remove()` + 再走一次 `reloadContent()`，回到内置素材、显示「已恢复原版薄肌」。
+
+### 9.4 失败与自检
+
+- 导入/保存失败：弹窗说明原因，当前内容包保持不动。
+- 已安装的 `HeadPet/` 被手工改坏：下次启动 `start()` 抛 `PetError`，App 弹窗后退出；
+  删掉该目录即可恢复内置薄肌。
+- `--self-test` 的 `selfTestPetPack` 用临时目录 + 独立 `UserDefaults` suite 跑
+  「安装 2 条语音 → 重新读取 → 替换薄肌（名字/句数）→ 编辑器建窗口 → 导入现成包 → 删除恢复」，
+  不接触用户真实目录和偏好。
+- 自定义内容包没有新增 CLI；入口全部在 GUI 菜单。
+
+## 10. 上游映射
 
 | 上游（合并时 commit） | 合并进 | 保留的行为 | 许可 |
 | --- | --- | --- | --- |
-| [ShaolanPet](https://github.com/Ganzhe2028/ShaolanPet) `7ce7e2b` | Audio 引擎基础、37 句素材、图标素材 | 竖向压扁动画、8 句默认轮播、大小 / 音量 / 挑一句、字幕布局 | MIT |
-| [SunPet](https://github.com/Ganzhe2028/SunPet) `9b68d09` | `Motion.swift`、捧哏预解码 / 静音测量、摇晃动画与捧哏池 | 机身摇晃、`leadingSilence` 补偿、hop==1 压紧 0.1 秒、6 句短捧哏 | MIT |
-| [FengGe-Desktop-Pet](https://github.com/Ganzhe2028/FengGe-Desktop-Pet) `d3336de` | 联动最全的语音引擎实现、11 句素材 | hop/root 防环、root 条件、全部 11 句捧哏池、build.sh 风格 | MIT |
-| [JellyPet](https://github.com/aurelius358/JellyPet) `7306d4e` | `Jelly/JellyModel.swift`、`JellyPetController.swift`、三个标志 | 按压 / 肿起 / 拉动 / Q 弹、560 窗口、点击穿透、自检断言 | 无 LICENSE；按 README「代码可自由修改」合并，见 NOTICE |
+| [ShaolanPet](https://github.com/Ganzhe2028/ShaolanPet) `7ce7e2b` | `Sources/PetKit/Audio/` 引擎基础、37 句素材、图标素材 | 竖向压扁动画、8 句默认轮播、大小 / 音量 / 挑一句、字幕布局 | MIT |
+| [SunPet](https://github.com/Ganzhe2028/SunPet) `9b68d09` | `Sources/PetKit/Audio/Motion.swift`、捧哏预解码 / 静音测量、摇晃动画与捧哏池 | 机身摇晃、`leadingSilence` 补偿、hop==1 压紧 0.1 秒、6 句短捧哏 | MIT |
+| [FengGe-Desktop-Pet](https://github.com/Ganzhe2028/FengGe-Desktop-Pet) `d3336de` | `Sources/PetKit/Audio/` 联动最全的语音引擎实现、11 句素材 | hop/root 防环、root 条件、全部 11 句捧哏池、build.sh 风格 | MIT |
+| [JellyPet](https://github.com/aurelius358/JellyPet) `7306d4e` | `Sources/PetKit/Jelly/JellyModel.swift`、`JellyPetController.swift`、三个标志 | 按压 / 肿起 / 拉动 / Q 弹、560 窗口、点击穿透、自检断言 | 无 LICENSE；按 README「代码可自由修改」合并，见 NOTICE |
 
-合并时做的改名与替换：
+合并（以及 2.0 分层）时做的改名与替换：
 
-- `Bridge.swift` 的三份副本 → `Sources/Hub/PetRelay.swift`；`DistributedNotificationCenter`
+- `Bridge.swift` 的三份副本 → `Sources/PetKit/PetRelay.swift`；`DistributedNotificationCenter`
   + bundle id 存活检测 → 进程内注册表，`PetSpeech` / `hop` / `root` 字段不变。
 - 果冻的类型统一加 `Jelly` 前缀避免重名：`Jelly`→`JellyModel`、`Spring`→`JellySpring`、
   `PetView`→`JellyView`、`PetPanel`→`JellyPanel`、`PetRenderer`→`JellyRenderer` 等。
 - 三只语音桌宠的差异收进 `AudioPetProfiles`，引擎只有一份；动画、字幕、菜单在 `AudioPetViews` / controller。
 - 偏好键从各自的旧 domain 改成 `local.pethub.app` 下的 `pet.<id>.*`；`bridgeEnabled` 改为
   `pet.sunpet.reactionEnabled`，`petX/petY` 改为 `panelX/panelY`。
+- 2.0 把内核文件从 `Sources/{Hub,Audio,Jelly}` 移到 `Sources/PetKit/`，产品装配留在
+  `Sources/PetHub/`；新增 `PetPack` 和「自定义桌宠」。
 
 上游每个仓库的贡献、URL 和 commit 详见 [docs/UPSTREAM.md](docs/UPSTREAM.md)。
 
-## 10. 已知限制
+## 11. 已知限制
 
 - **只支持 Apple Silicon + macOS 14+**。`build.sh` 把 target 写死成 `arm64-apple-macosx14.0`；
   Intel Mac 需要自己改 target 并验证，不是官方支持路径。
@@ -317,19 +398,26 @@ swift Tools/make-icon.swift   # build/AppIcon.iconset + Assets/AppIcon.icns + /t
 - **不再和四个独立 App 跨进程联动**。合集内部四只走进程内广播；如果你同时开着原来的独立 App，
   它们仍按旧的本机通知互相接话，但**不会**和合集里的桌宠接话，两套还可能叠在屏幕上。
 - **不继承旧 App 的偏好**。bundle id 变了，位置、音量、大小按合集的默认值来。
+- **自定义内容只替换薄肌**：太对了 / 峰哥 / 果冻不能用内容包替换；一次只能装一个包；
+  包里的路径必须是本地相对路径（不支持网络 URL）；内容包损坏会导致启动失败，需手动删除
+  `~/Library/Application Support/PetHub/HeadPet/`。
 - **机身摇晃依赖未公开的 SPU 传感器接口**。部分机型 / 系统版本读不到，会显示原因并自动关掉该功能，
   不影响其他三只；读取跑在独立子进程，只走 127.0.0.1，不联网。
 - **果冻没有语音**，不参与捧哏链；它只有形变和图标切换。
 - **正常启动只允许一个实例**；自检 / 诊断 / 预览模式例外。
-- 音频、头像、Claude/GPT/Gemini 标志**不在 MIT 许可里**，不商用；公开再分发前先看 NOTICE.md。
+- 内置音频、头像、Claude/GPT/Gemini 标志**不在 MIT 许可里**，不商用；公开再分发前先看 NOTICE.md。
+  用户自己导入的内容版权归用户，App 不上传、不联网。
 
-## 11. 加第五只 / 改联动的检查清单
+## 12. 加内置角色 / 改联动的检查清单
 
-1. `PetID` 加 case；`title` / `fullName` / `assetsFolder` 补齐（`assetsFolder` 是 `Assets/` 下的目录名）。
+1. `PetID` 加 case；`title` / `fullName` / `assetsFolder` / `isAudio` 补齐
+   （`assetsFolder` 是 `Assets/` 下的目录名）。
 2. `PetLayout` 加槽位宽度、排进 `order`；否则启动位置会落在行外。
 3. 新角色如果是语音桌宠：在 `AudioPetProfiles` 加 profile（默认大小、动画、捧哏池、reaction），
-   素材目录放 `Assets/<新目录>/`（`face.png`、`clips.json`、`Clips/`）。
-4. 改 `reaction` / `hop` 上限 / `root` 条件时，同步改 `--chain-test` 的期望序列和本文档第 4 节；
+   并在 `profile(for:)` 返回它；素材目录放 `Assets/<新目录>/`（`face.png`、`clips.json`、`Clips/`）。
+4. `build.sh` 的素材目录检查与 `cp -R Assets/...` 列表是写死的四只，新角色要一起加。
+5. 改 `reaction` / `hop` 上限 / `root` 条件时，同步改 `--chain-test` 的期望序列和本文档第 4 节；
    这三处不一致会被验收抓到。
-5. 图标：把新脸加进 `Tools/make-icon.swift`，2×2 布局要改成 5 格或换排布；跑一遍生成 icns。
-6. `./build.sh` 必须最后一行 `PASS`，`--self-test` 与 `--chain-test` 都要过，再 `--package`。
+6. 图标：把新脸加进 `Tools/make-icon.swift`，2×2 布局要改成 5 格或换排布；跑一遍生成 icns。
+7. 只是让用户换角色的话，不用加内置角色：做一个 PetPack 内容包即可，见第 9 节。
+8. `./build.sh` 必须最后一行 `PASS`，`--self-test` 与 `--chain-test` 都要过，再 `--package`。

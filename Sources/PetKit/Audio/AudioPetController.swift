@@ -57,6 +57,12 @@ final class AudioPetController: NSObject, PetHost, AVAudioPlayerDelegate {
 
     private var groupDragStart: NSPoint?
 
+    // 自定义薄肌内容包（用户上传头像/语音/中文）
+    let packStore: PetPackStore
+    private var customPack: PetPack?
+    private var customName: String?
+    private var contentSignature = ""
+
     private let testing = CommandLine.arguments.contains("--self-test")
     private let tracing = CommandLine.arguments.contains("--trace")
     private let previewing = CommandLine.arguments.contains("--preview")
@@ -73,42 +79,123 @@ final class AudioPetController: NSObject, PetHost, AVAudioPlayerDelegate {
 
     // MARK: 初始化
 
-    init(profile: AudioPetProfile, settings: PetSettings) {
+    init(profile: AudioPetProfile, settings: PetSettings,
+         packStore: PetPackStore = PetPackStore()) {
         self.profile = profile
         self.settings = settings
+        self.packStore = packStore
         self.volume = profile.defaultVolume
         self.size = profile.defaultSize
         super.init()
     }
 
+    /// 自定义薄肌时用用户起的名字。
+    var displayTitle: String { customName ?? profile.id.title }
+
+    /// 是否正在用用户自定义内容替换薄肌。
+    var isCustomHead: Bool { customPack != nil }
+
     // MARK: 生命周期
 
-    func start() throws {
-        do {
-            let data = try Data(contentsOf: petFolder.appendingPathComponent("clips.json"))
-            clips = try JSONDecoder().decode([Clip].self, from: data)
-        } catch {
-            throw PetError("\(profile.id.fullName)的 clips.json 读不出来：\(error.localizedDescription)")
-        }
-        guard !clips.isEmpty else { throw PetError("\(profile.id.fullName)的 clips.json 是空的") }
-        guard let face = NSImage(contentsOf: petFolder.appendingPathComponent("face.png")),
-              face.size.width > 0 else {
-            throw PetError("\(profile.id.fullName)缺少 Assets/\(id.assetsFolder)/face.png")
-        }
-        for clip in clips {
-            let url = clipURL(clip)
-            guard FileManager.default.fileExists(atPath: url.path) else {
-                throw PetError("\(profile.id.fullName)缺少音频：\(clip.file)")
-            }
-        }
+    private struct LoadedContent {
+        let face: NSImage
+        let clips: [Clip]
+        let signature: String
+        let customPack: PetPack?
+        let customName: String?
+    }
 
-        imageRatio = face.size.height / face.size.width
+    func start() throws {
+        let content = try loadContent()
+        adopt(content)
         loadPreferences()
-        buildPanel(face: face)
+        buildPanel(face: content.face)
         restorePosition()
         panel?.orderFrontRegardless()
         preloadCompanionClips()
         if profile.hasMotion && !diagnostic { startMotion() }
+    }
+
+    private func adopt(_ content: LoadedContent) {
+        clips = content.clips
+        customPack = content.customPack
+        customName = content.customName
+        contentSignature = content.signature
+        imageRatio = content.face.size.height / max(1, content.face.size.width)
+    }
+
+    /// 薄肌槽位优先读用户安装的内容包；没有内容包就读内置素材。
+    private func loadContent() throws -> LoadedContent {
+        if profile.id == .shaolan, let pack = packStore.current() {
+            guard let face = pack.avatarImage() else {
+                throw PetError("自定义桌宠的头像读不出来：\(pack.avatarURL.lastPathComponent)")
+            }
+            do {
+                let customClips = try pack.clips()
+                return LoadedContent(face: face,
+                                     clips: customClips,
+                                     signature: "pack:" + pack.signature,
+                                     customPack: pack,
+                                     customName: pack.name)
+            } catch {
+                throw PetError("自定义桌宠包不可用：\(error.localizedDescription)")
+            }
+        }
+
+        do {
+            let data = try Data(contentsOf: petFolder.appendingPathComponent("clips.json"))
+            let bundledClips = try JSONDecoder().decode([Clip].self, from: data)
+            guard !bundledClips.isEmpty else {
+                throw PetError("\(profile.id.fullName)的 clips.json 是空的")
+            }
+            guard let face = NSImage(contentsOf: petFolder.appendingPathComponent("face.png")),
+                  face.size.width > 0 else {
+                throw PetError("\(profile.id.fullName)缺少 Assets/\(id.assetsFolder)/face.png")
+            }
+            for clip in bundledClips {
+                let url = petFolder.appendingPathComponent("Clips", isDirectory: true)
+                    .appendingPathComponent(clip.file)
+                guard FileManager.default.fileExists(atPath: url.path) else {
+                    throw PetError("\(profile.id.fullName)缺少音频：\(clip.file)")
+                }
+            }
+            let signature = "builtin:" + bundledClips
+                .map { "\($0.id)|\($0.label)|\($0.file)" }
+                .joined(separator: "\n")
+            return LoadedContent(face: face, clips: bundledClips,
+                                 signature: signature, customPack: nil, customName: nil)
+        } catch let error as PetError {
+            throw error
+        } catch {
+            throw PetError("\(profile.id.fullName)的 clips.json 读不出来：\(error.localizedDescription)")
+        }
+    }
+
+    /// 用户在「自定义桌宠」里保存 / 恢复原版之后，原地换内容，不重启 App。
+    func reloadContent() throws {
+        stopPlayback()
+        let content = try loadContent()
+        adopt(content)
+        if let pet {
+            pet.face.image = content.face
+            pet.updateAccessibilityLabel(accessibilityLabel)
+        }
+        if let panel {
+            panel.title = displayTitle
+            panel.setContentSize(NSSize(width: size,
+                                        height: profile.layout.panelHeight(for: size, faceRatio: imageRatio)))
+        }
+        loadPreferences()
+        preloadCompanionClips()
+        updateToolTip()
+        showCaption(isCustomHead ? "已换成 \(displayTitle)" : "已恢复原版薄肌", seconds: 3)
+    }
+
+    private var accessibilityLabel: String {
+        if let customName {
+            return "\(customName)桌宠，点击随机播放一句，拖动移动，右键设置"
+        }
+        return profile.accessibilityLabel
     }
 
     private func loadPreferences() {
@@ -119,13 +206,27 @@ final class AudioPetController: NSObject, PetHost, AVAudioPlayerDelegate {
         if settings.has("pinnedID") {
             pinnedID = settings.int("pinnedID", -1)
         }
-        if settings.has("excludedIDs") {
+        let sameContent = settings.string("contentSignature", "") == contentSignature
+        if sameContent, settings.has("excludedIDs") {
             excludedIDs = settings.intSet("excludedIDs")
-        } else if profile.initialDefaultOffExclusions {
-            // 薄肌第一次运行：按素材里的 defaultOff 标出默认轮播，之后用户怎么改都记住。
-            excludedIDs = Set(clips.filter { $0.defaultOff == true }.map(\.id))
-            if !diagnostic { settings.setIntSet(excludedIDs, "excludedIDs") }
+        } else {
+            // 内容变了（第一次运行 / 换了自定义包 / 恢复原版）：旧的勾选和固定句不再可靠，重置。
+            excludedIDs = (customPack == nil && profile.initialDefaultOffExclusions)
+                ? Set(clips.filter { $0.defaultOff == true }.map(\.id))
+                : []
+            pinnedID = nil
+            bag.remaining.removeAll()
+            if !diagnostic {
+                settings.setIntSet(excludedIDs, "excludedIDs")
+                settings.set(contentSignature, "contentSignature")
+                // 固定句和播放方式也属于旧内容，必须一起清掉，否则重启会“复活”。
+                settings.remove("pinnedID")
+                settings.set(true, "randomMode")
+            }
         }
+        let validIDs = Set(clips.map(\.id))
+        excludedIDs = excludedIDs.filter { validIDs.contains($0) }
+        if !clips.isEmpty && excludedIDs.count >= clips.count { excludedIDs.removeAll() }
         if !randomMode && !pinValid() { randomMode = true }
         if settings.has("reactionEnabled") {
             bridgeEnabled = settings.bool("reactionEnabled", true)
@@ -138,7 +239,7 @@ final class AudioPetController: NSObject, PetHost, AVAudioPlayerDelegate {
         let panel = AudioPetPanel(contentRect: NSRect(origin: .zero, size: contentSize),
                                   styleMask: [.borderless, .nonactivatingPanel],
                                   backing: .buffered, defer: false)
-        panel.title = id.fullName
+        panel.title = displayTitle
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = false
@@ -150,7 +251,7 @@ final class AudioPetController: NSObject, PetHost, AVAudioPlayerDelegate {
         let view = AudioPetView(frame: NSRect(origin: .zero, size: contentSize),
                                 layout: profile.layout,
                                 animation: profile.animation,
-                                accessibilityLabel: profile.accessibilityLabel)
+                                accessibilityLabel: accessibilityLabel)
         view.owner = self
         view.face.image = face
         panel.contentView = view
@@ -226,7 +327,11 @@ final class AudioPetController: NSObject, PetHost, AVAudioPlayerDelegate {
     // MARK: 播放
 
     private func clipURL(_ clip: Clip) -> URL {
-        petFolder.appendingPathComponent("Clips", isDirectory: true).appendingPathComponent(clip.file)
+        if let customPack {
+            return customPack.root.appendingPathComponent(clip.file)
+        }
+        return petFolder.appendingPathComponent("Clips", isDirectory: true)
+            .appendingPathComponent(clip.file)
     }
 
     @objc func playNext() {
@@ -382,7 +487,10 @@ final class AudioPetController: NSObject, PetHost, AVAudioPlayerDelegate {
         let menu = NSMenu()
         // 有自定义视图（大小滑块、轮播复选框），关掉自动启用判定，免得被当成无 action 的禁用项。
         menu.autoenablesItems = false
-        let header = item("\(profile.menuHeader) · \(clips.count) 句原声", nil)
+        let headerTitle = isCustomHead
+            ? "\(displayTitle) · 自定义 · \(clips.count) 句"
+            : "\(profile.menuHeader) · \(clips.count) 句原声"
+        let header = item(headerTitle, nil)
         header.isEnabled = false
         menu.addItem(header)
         let hint = item(randomMode ? "点击随机播放 · 一轮内不重复" : "点击播放固定那句", nil)
@@ -790,6 +898,7 @@ final class AudioPetController: NSObject, PetHost, AVAudioPlayerDelegate {
             + " pos=\(Int(origin.x)),\(Int(origin.y)) clips=\(clips.count) pool=\(pool)"
             + " mode=\(randomMode ? "random" : "fixed") pinned=\(pinnedID.map(String.init) ?? "nil")"
             + " volume=\(String(format: "%.2f", volume)) relay=\(relayEnabled ? "on" : "off")"
+            + " content=\(isCustomHead ? "custom:\(displayTitle)" : "builtin")"
     }
 
     /// `--chain-test` 静音用：换成 0 但保留时长/回调，节奏不受影响。
@@ -817,10 +926,14 @@ final class AudioPetController: NSObject, PetHost, AVAudioPlayerDelegate {
         }
 
         check(!clips.isEmpty, "素材里有 \(clips.count) 句")
+        // 内置素材维持原来的 0.25–8s；用户内容包只要求 >0.1s（与 PetPack 校验一致），
+        // 否则用户合法导入的短句/长句会让 build.sh 的自检 FAIL。
+        let minimumDuration: Double = isCustomHead ? 0.1 : 0.25
+        let maximumDuration: Double = isCustomHead ? 3600 : 8
         for clip in clips {
             do {
                 let audio = try AVAudioPlayer(contentsOf: clipURL(clip))
-                check(audio.duration > 0.25 && audio.duration < 8,
+                check(audio.duration > minimumDuration && audio.duration < maximumDuration,
                       "音频 \(clip.id) 可解码且时长合理（\(fmt(audio.duration))s）")
             } catch {
                 check(false, "音频 \(clip.id) 读取失败：\(error.localizedDescription)")
@@ -909,7 +1022,9 @@ final class AudioPetController: NSObject, PetHost, AVAudioPlayerDelegate {
 
         // 勾掉的句子绝不出现在随机里。
         randomMode = true
-        excludedIDs = Set(clips.prefix(2).map(\.id))
+        // 自定义内容可能只有 1–2 句；至少留一句在轮播里，别把测试池清空。
+        let excludeCount = min(2, max(0, clips.count - 1))
+        excludedIDs = Set(clips.prefix(excludeCount).map(\.id))
         var excludedOK = true
         for _ in 0..<40 {
             player?.stop()

@@ -129,6 +129,10 @@ final class AudioPetView: NSView {
         return true
     }
 
+    func updateAccessibilityLabel(_ label: String) {
+        setAccessibilityLabel(label)
+    }
+
     /// 说话时的待机动画。薄肌/峰哥竖向压扁，太对了左右摇 + 上浮。
     func animate(_ enabled: Bool) {
         speaking = enabled

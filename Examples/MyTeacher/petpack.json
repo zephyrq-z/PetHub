@@ -1,0 +1,11 @@
+{
+  "format": 1,
+  "name": "我的老师",
+  "author": "你的名字",
+  "avatar": "avatar.png",
+  "clips": [
+    { "file": "clips/01.m4a", "label": "同学们好" },
+    { "file": "clips/02.m4a", "label": "这道题我再讲一遍" },
+    { "file": "clips/03.aiff", "label": "下课" }
+  ]
+}

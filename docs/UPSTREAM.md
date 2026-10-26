@@ -2,6 +2,7 @@
 
 桌宠合集由四个独立仓库在 **2026-10-26** 合并而成。`upstream/` 下是四个仓库的只读副本
 （已 `.gitignore`，不进交付仓库）；这里记录合并时对应的 commit，方便对照原始实现和追溯许可。
+2.0 把内核文件移到了 `Sources/PetKit/`，成品装配留在 `Sources/PetHub/`；下面的路径按 2.0 目录写。
 
 | 上游仓库 | 合并时 commit | commit 日期 | 许可 |
 | --- | --- | --- | --- |
@@ -17,7 +18,7 @@
 `clips.json`（带 `source` / `defaultOff` / `answer` 字段）、`face.png`；
 `build.sh` / `install.sh` 的中文风格和自检 PASS 约定。
 
-**合并进**：`Sources/Audio/AudioPetController.swift`、`AudioPetViews.swift`、
+**合并进**：`Sources/PetKit/Audio/AudioPetController.swift`、`AudioPetViews.swift`、
 `AudioPetProfiles.swift` 的 `shaolan` profile（竖向压扁动画、默认只开 8 句、链头不接话）；
 素材放到 `Assets/shaolan/`。
 
@@ -29,7 +30,7 @@
 捧哏机制的关键细节——预解码捧哏句、逐句测开头静音 `leadingSilence`、按 hop 调整接话重叠；
 太对了的 28 句 `.m4a` 音频和 `face.png`。
 
-**合并进**：`Sources/Audio/Motion.swift`（去掉文件底部的入口，交给 `main.swift`）、
+**合并进**：`Sources/PetKit/Audio/Motion.swift`（去掉文件底部的入口，交给 `PetHub/main.swift`）、
 `AudioPetController` 的接话调度 / 预解码 / 静音补偿、`sunpet` profile
 （左右摇晃 ±0.055 rad、6 句短捧哏池、`reaction` 接薄肌和峰哥、保留自己的「捧哏联动」开关）；
 素材放到 `Assets/sun/`。
@@ -43,8 +44,8 @@
 完整的语音引擎实现，包括菜单结构、「轮播内容」真 `NSButton` 复选框、固定模式；
 峰哥的 11 句 `.wav`、`clips.json`、`face.png`。
 
-**合并进**：`PetRelay` 的协议语义（`PetSpeech` 的 `hop` / `root` 规则直接沿用）、
-`AudioPetController` 的菜单与轮播内容、`fengge` profile
+**合并进**：`Sources/PetKit/PetRelay.swift` 的协议语义（`PetSpeech` 的 `hop` / `root` 规则直接沿用）、
+`Sources/PetKit/Audio/AudioPetController.swift` 的菜单与轮播内容、`fengge` profile
 （只接太对了、且 `root == .shaolan` 才接，接完断链）；素材放到 `Assets/fengge/`。
 
 **许可**：MIT，Copyright (c) 2026 好事桌宠 contributors，全文见
@@ -56,7 +57,7 @@
 560×560 透明窗口、只让图标附近接收点击、CIBumpDistortion 局部肿起、朝光标单侧拉伸、
 Q 弹归位、图标切换、大小 / 位置记忆和那套弹簧自检；三个 Claude / GPT / Gemini 标志 PNG。
 
-**合并进**：`Sources/Jelly/JellyModel.swift`、`Sources/Jelly/JellyPetController.swift`；
+**合并进**：`Sources/PetKit/Jelly/JellyModel.swift`、`Sources/PetKit/Jelly/JellyPetController.swift`；
 类型统一加 `Jelly` 前缀避免和语音桌宠重名（`Jelly`→`JellyModel`、`Spring`→`JellySpring`、
 `PetView`→`JellyView`、`PetPanel`→`JellyPanel`、`PetStyle`→`JellyStyle`、
 `PetGeometry`→`JellyGeometry`、`PetRenderer`→`JellyRenderer`、`PetAssets`→`JellyAssets`、
@@ -77,6 +78,7 @@ Q 弹归位、图标切换、大小 / 位置记忆和那套弹簧自检；三个
 | 四只各自占屏幕右下角 | `PetLayout` 把它们排成右下角一行（槽位宽 260/180/260/128，间距 36） |
 | 四个菜单栏状态项 | 一个「桌宠」状态项，四只的菜单作为子菜单 |
 | 果冻的 `Pet*` 类型和语音桌宠同名 | 果冻侧统一加 `Jelly` 前缀 |
+| 1.x 的 `Sources/{Hub,Audio,Jelly}` 单层目录 | 2.0 拆成 `Sources/PetKit/`（可复用内核）+ `Sources/PetHub/`（成品 App）；新增 `PetPack` 内容包与「自定义桌宠」 |
 
 ## 怎么核对
 

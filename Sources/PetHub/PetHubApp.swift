@@ -24,6 +24,9 @@ final class PetHubApp: NSObject, NSApplicationDelegate, PetHubContext {
     private var speechLog: [PetSpeech] = []
     private var chainAttempt = 0
     private var groupDragTotal = CGSize.zero
+    let petPackStore = PetPackStore()
+    private var customHeadEditor: CustomHeadImporterController?
+
     private var groupDragActive = false
 
     // MARK: 生命周期
@@ -209,7 +212,8 @@ final class PetHubApp: NSObject, NSApplicationDelegate, PetHubContext {
         let visibility = NSMenuItem(title: "显示 / 隐藏", action: nil, keyEquivalent: "")
         let visibilityMenu = NSMenu()
         for (index, id) in PetLayout.order.enumerated() {
-            let entry = menuItem(id.fullName, #selector(toggleVisibility(_:)), tag: index)
+            let entry = menuItem(pets[id]?.displayTitle ?? id.fullName,
+                                 #selector(toggleVisibility(_:)), tag: index)
             entry.state = isPetVisible(id) ? .on : .off
             visibilityMenu.addItem(entry)
         }
@@ -218,10 +222,29 @@ final class PetHubApp: NSObject, NSApplicationDelegate, PetHubContext {
         menu.addItem(.separator())
 
         for id in PetLayout.order {
-            let submenu = NSMenuItem(title: id.title, action: nil, keyEquivalent: "")
+            let submenu = NSMenuItem(title: pets[id]?.displayTitle ?? id.title,
+                                     action: nil, keyEquivalent: "")
             submenu.submenu = pets[id]?.makeMenu() ?? NSMenu()
             menu.addItem(submenu)
         }
+        menu.addItem(.separator())
+
+        let customRoot = NSMenuItem(title: "自定义桌宠", action: nil, keyEquivalent: "")
+        let customMenu = NSMenu()
+        let currentPack = petPackStore.current()
+        let currentInfo = NSMenuItem(title: currentPack.map { "当前：\($0.name)（替换薄肌）" }
+                                        ?? "当前：原版薄肌",
+                                     action: nil, keyEquivalent: "")
+        currentInfo.isEnabled = false
+        customMenu.addItem(currentInfo)
+        customMenu.addItem(menuItem("换成我的角色…（替换薄肌）", #selector(openCustomHeadEditor)))
+        customMenu.addItem(menuItem("导入 petpack.json 文件夹…", #selector(importCustomHeadPack)))
+        customMenu.addItem(menuItem("打开内容包文件夹", #selector(openCustomHeadFolder)))
+        if currentPack != nil {
+            customMenu.addItem(menuItem("恢复原版薄肌", #selector(restoreBuiltinHead)))
+        }
+        customRoot.submenu = customMenu
+        menu.addItem(customRoot)
         menu.addItem(.separator())
 
         let relayItem = menuItem("捧哏联动", #selector(toggleRelaySetting))
@@ -362,16 +385,84 @@ final class PetHubApp: NSObject, NSApplicationDelegate, PetHubContext {
         for pet in pets.values { pet.moveToDefaultPosition() }
     }
 
+    @objc private func openCustomHeadEditor() {
+        let editor = CustomHeadImporterController(
+            store: petPackStore,
+            current: petPackStore.current(),
+            onApply: { [weak self] in self?.reloadHeadPet() },
+            onRestore: { [weak self] in self?.reloadHeadPet() })
+        customHeadEditor = editor
+        editor.show()
+    }
+
+    @objc private func importCustomHeadPack() {
+        let panel = NSOpenPanel()
+        panel.title = "选择包含 petpack.json 的文件夹"
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let folder = panel.url else { return }
+        do {
+            _ = try petPackStore.importPack(from: folder)
+            reloadHeadPet()
+        } catch {
+            showAlert("导入桌宠包失败", error.localizedDescription)
+        }
+    }
+
+    @objc private func openCustomHeadFolder() {
+        let folder = PetPack.defaultStoreURL.deletingLastPathComponent()
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        NSWorkspace.shared.open(folder)
+    }
+
+    @objc private func restoreBuiltinHead() {
+        let alert = NSAlert()
+        alert.messageText = "恢复原版薄肌？"
+        alert.informativeText = "会删掉当前自定义内容包，薄肌恢复成原来的 37 句。"
+        alert.addButton(withTitle: "恢复")
+        alert.addButton(withTitle: "取消")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        do {
+            try petPackStore.remove()
+            reloadHeadPet()
+        } catch {
+            showAlert("恢复失败", error.localizedDescription)
+        }
+    }
+
+    private func reloadHeadPet() {
+        guard let audio = pets[.shaolan] as? AudioPetController else { return }
+        do {
+            try audio.reloadContent()
+        } catch {
+            showAlert("切换自定义桌宠失败", error.localizedDescription)
+        }
+    }
+
+    private func showAlert(_ title: String, _ message: String) {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = message
+        alert.runModal()
+    }
+
     @objc private func showAbout() {
         let counts = PetLayout.order.compactMap { id -> String? in
             guard let audio = pets[id] as? AudioPetController else { return nil }
-            return "\(id.title) \(audio.clipCount) 句"
+            return "\(self.pets[id]?.displayTitle ?? id.title) \(audio.clipCount) 句"
         }.joined(separator: " · ")
+        let customLine: String
+        if let pack = petPackStore.current() {
+            customLine = "\n薄肌槽位当前使用自定义内容：\(pack.name)（\(pack.manifest.clips.count) 句）"
+        } else {
+            customLine = ""
+        }
         let alert = NSAlert()
-        alert.messageText = "桌宠合集 1.3.0"
+        alert.messageText = "桌宠合集 2.0.0"
         alert.informativeText = """
         薄肌 · 太对了 · 峰哥 · 果冻，四只桌宠住在同一个 App 里。
-        \(counts)
+        \(counts)\(customLine)
 
         四个项目分别来自：
         github.com/Ganzhe2028/ShaolanPet
@@ -394,7 +485,7 @@ final class PetHubApp: NSObject, NSApplicationDelegate, PetHubContext {
     }
 
     private func dumpState() {
-        print("version=1.3.0 relay=\(relayEnabled ? "on" : "off") pets=\(pets.count)")
+        print("version=2.0.0 relay=\(relayEnabled ? "on" : "off") pets=\(pets.count)")
         for id in PetLayout.order {
             print(pets[id]?.stateDescription ?? "\(id.rawValue) missing")
         }
@@ -508,7 +599,7 @@ final class PetHubApp: NSObject, NSApplicationDelegate, PetHubContext {
                 .font: NSFont.systemFont(ofSize: 26, weight: .semibold),
                 .foregroundColor: NSColor.white.withAlphaComponent(0.9),
             ]
-            let title = id.title as NSString
+            let title = (pets[id]?.displayTitle ?? id.title) as NSString
             let titleSize = title.size(withAttributes: attributes)
             title.draw(at: NSPoint(x: x + (size.width - titleSize.width) / 2, y: 56), withAttributes: attributes)
             x += size.width + 56
@@ -541,6 +632,7 @@ final class PetHubApp: NSObject, NSApplicationDelegate, PetHubContext {
         }
 
         check(pets.count == PetLayout.order.count, "四只桌宠都建好了（\(pets.count) 只）")
+        selfTestPetPack(check)
         check(relayEnabled, "联动默认开启")
         for id in PetLayout.order {
             check(pets[id] != nil, "\(id.title) 控制器存在")
@@ -769,6 +861,90 @@ final class PetHubApp: NSObject, NSApplicationDelegate, PetHubContext {
         print(failures.isEmpty ? "PASS" : "FAIL: \(failures)")
         fflush(stdout)
         exit(failures.isEmpty ? 0 : 1)
+    }
+
+    /// 自定义内容包：安装 → 读取 → 替换薄肌 → 删除，全在临时目录里做，不碰用户真实内容。
+    private func selfTestPetPack(_ check: (Bool, String) -> Void) {
+        let fm = FileManager.default
+        let base = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("pethub-pack-selftest-\(UUID().uuidString)", isDirectory: true)
+        let suiteName = "local.pethub.selftest.pack"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer {
+            try? fm.removeItem(at: base)
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+        guard let resources = Bundle.main.resourceURL else {
+            check(false, "自定义内容包：找不到 App 资源目录")
+            return
+        }
+        let avatar = resources.appendingPathComponent("shaolan/face.png")
+        let audio = resources.appendingPathComponent("shaolan/Clips/01.wav")
+        guard fm.fileExists(atPath: avatar.path), fm.fileExists(atPath: audio.path) else {
+            check(false, "自定义内容包：缺少测试素材")
+            return
+        }
+        let store = PetPackStore(baseURL: base.appendingPathComponent("HeadPet", isDirectory: true))
+        do {
+            let pack = try store.install(name: "我的老师", avatarURL: avatar,
+                                         clips: [(audio, "同学们好"), (audio, "下课")])
+            check(pack.name == "我的老师" && pack.manifest.clips.count == 2,
+                  "自定义内容包：安装 2 条语音并读出名字")
+            guard let loaded = store.current(), let loadedClips = try? loaded.clips() else {
+                check(false, "自定义内容包：重新读取失败")
+                return
+            }
+            check(loadedClips.count == 2 && loadedClips.map(\.label) == ["同学们好", "下课"],
+                  "自定义内容包：语音和中文一一对应")
+            check(loaded.avatarImage() != nil, "自定义内容包：头像可读")
+
+            defaults.removePersistentDomain(forName: suiteName)
+            let controller = AudioPetController(profile: AudioPetProfiles.shaolan,
+                                                settings: PetSettings(.shaolan, defaults: defaults),
+                                                packStore: store)
+            try controller.start()
+            check(controller.isCustomHead && controller.displayTitle == "我的老师",
+                  "自定义内容包：替换薄肌后名字变成「我的老师」")
+            check(controller.clipCount == 2, "自定义内容包：替换薄肌后只有 2 句")
+            controller.shutdown()
+
+            let editor = CustomHeadImporterController(store: store, current: loaded,
+                                                      onApply: {}, onRestore: {})
+            check(editor.window != nil && (editor.window?.contentView?.subviews.count ?? 0) > 8,
+                  "自定义内容包：编辑器窗口能建出来")
+            editor.window?.contentView?.layoutSubtreeIfNeeded()
+            let editorScroll = editor.window?.contentView?.subviews
+                .compactMap { $0 as? NSScrollView }.first
+            let editorTable = editorScroll?.documentView as? NSTableView
+            check(editorTable?.numberOfRows == 2,
+                  "自定义内容包：编辑器列出已有的 2 条语音")
+            editor.close()
+
+            // 导入一个已经做好的 petpack 文件夹（开源分发格式）。
+            let source = base.appendingPathComponent("SourcePack", isDirectory: true)
+            try fm.createDirectory(at: source.appendingPathComponent("clips", isDirectory: true),
+                                   withIntermediateDirectories: true)
+            try fm.copyItem(at: avatar, to: source.appendingPathComponent("avatar.png"))
+            try fm.copyItem(at: audio, to: source.appendingPathComponent("clips/01.wav"))
+            let sourceManifest = PetPackManifest(
+                format: PetPackManifest.currentFormat,
+                name: "导入的老师",
+                author: "测试",
+                avatar: "avatar.png",
+                clips: [PetPackClip(file: "clips/01.wav", label: "导入的一句")])
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+            try encoder.encode(sourceManifest).write(to: source.appendingPathComponent("petpack.json"))
+            let imported = try store.importPack(from: source)
+            check(imported.name == "导入的老师"
+                  && (try? imported.clips().map(\.label)) == ["导入的一句"],
+                  "自定义内容包：能导入现成的 petpack 文件夹")
+
+            try store.remove()
+            check(!store.isInstalled, "自定义内容包：恢复原版后内容包被删掉")
+        } catch {
+            check(false, "自定义内容包自检失败：\(error.localizedDescription)")
+        }
     }
 
     private func setOfVisibilityStates() -> Set<Bool> {

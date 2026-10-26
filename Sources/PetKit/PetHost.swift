@@ -62,6 +62,8 @@ protocol PetHost: AnyObject {
     func showStartupHint()
     /// `--dump-state` 用的一行状态。
     var stateDescription: String { get }
+    /// 菜单/界面上显示的名字。自定义薄肌时是用户起的名字。
+    var displayTitle: String { get }
     /// 相对默认大小（1.0 = 默认）的缩放。滑块直接改这个值。
     var sizeScale: Double { get }
     func applySizeScale(_ scale: Double)
@@ -89,6 +91,8 @@ extension PetHost {
     var stateDescription: String {
         "\(id.rawValue) visible=\(isVisible) size=\(Int(panelSize.width))x\(Int(panelSize.height))"
     }
+
+    var displayTitle: String { id.title }
 
     func showStartupHint() {}
     var sizeScale: Double { 1.0 }

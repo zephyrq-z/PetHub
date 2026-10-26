@@ -42,8 +42,8 @@
 
 证据：
 
-- [Sources/Hub/PetHubApp.swift:94-104](../Sources/Hub/PetHubApp.swift) 的 `buildPets()` 在同一个进程里直接 `new` 三个 `AudioPetController` + 一个 `JellyPetController`，全部挂到本进程的 `PetHubContext`；没有 `NSTask`/子 .app/`open` 启动四个旧 App。
-- 唯一子进程是上游原设计的机身摇晃 helper（[Sources/Audio/Motion.swift:175-176](../Sources/Audio/Motion.swift) `--motion-helper`，127.0.0.1 回环 UDP），只在正常启动且传感器可用时拉起，与“四只桌宠同进程”不矛盾。
+- [Sources/Hub/PetHubApp.swift:94-104](../Sources/PetHub/PetHubApp.swift) 的 `buildPets()` 在同一个进程里直接 `new` 三个 `AudioPetController` + 一个 `JellyPetController`，全部挂到本进程的 `PetHubContext`；没有 `NSTask`/子 .app/`open` 启动四个旧 App。
+- 唯一子进程是上游原设计的机身摇晃 helper（[Sources/Audio/Motion.swift:175-176](../Sources/PetKit/Audio/Motion.swift) `--motion-helper`，127.0.0.1 回环 UDP），只在正常启动且传感器可用时拉起，与“四只桌宠同进程”不矛盾。
 - 全仓库 `grep`：无 `NSTask`、无 `DistributedNotificationCenter` 使用；`Process(` 仅 Motion helper 一处；旧三份 `Bridge.swift` 没有被编进合集（`upstream/` 只读参考）。
 - 运行时验证：正常启动后 `pgrep` 只有 `PetHub` + 可选 `PetHub --motion-helper` 两个进程；四只窗口同一 owner pid（`桌宠合集`），layer=3。
 
@@ -56,8 +56,8 @@
 | 峰哥 | 11 句 `.wav` | 11 句；`clips=11` | PASS |
 | 默认大小 | 260 / 180 / 260 | 实测窗口 `260×296` / `180×228` / `260×291`；公式与 DESIGN §3.2、上游一致 | PASS |
 | 果冻 | 窗口 560×560，图标 104/128/160 默认 128 | 窗口 560×560；默认 128；CGWindowList 图标中心 (1640,88) | PASS |
-| 动画 | 竖压 12%/30fps；±0.055rad+上浮3px | [Sources/Audio/AudioPetViews.swift:115-145](../Sources/Audio/AudioPetViews.swift) 与 upstream 逐行一致（含 Reduce Motion） | PASS（静态+上游 diff） |
-| 菜单 | 三只：挑一句/播放方式/轮播内容(真 NSButton)/音量 6 档/大小/停止/移回/隐藏；太对了另有捧哏开关+摇晃；峰哥/薄肌联动状态；果冻：回原位/大小/图标/隐藏 | 自检断言菜单结构与隐藏项全 OK；代码逐项核对见 [AudioPetController.swift:375-484](../Sources/Audio/AudioPetController.swift)、[JellyPetController.swift:480-518](../Sources/Jelly/JellyPetController.swift) | PASS |
+| 动画 | 竖压 12%/30fps；±0.055rad+上浮3px | [Sources/Audio/AudioPetViews.swift:115-145](../Sources/PetKit/Audio/AudioPetViews.swift) 与 upstream 逐行一致（含 Reduce Motion） | PASS（静态+上游 diff） |
+| 菜单 | 三只：挑一句/播放方式/轮播内容(真 NSButton)/音量 6 档/大小/停止/移回/隐藏；太对了另有捧哏开关+摇晃；峰哥/薄肌联动状态；果冻：回原位/大小/图标/隐藏 | 自检断言菜单结构与隐藏项全 OK；代码逐项核对见 [AudioPetController.swift:375-484](../Sources/PetKit/Audio/AudioPetController.swift)、[JellyPetController.swift:480-518](../Sources/PetKit/Jelly/JellyPetController.swift) | PASS |
 | 偏好键 | `pet.<id>.` 前缀 | 干净域正常启动只出现 `pet.shaolan.excludedIDs`；harness 验证四前缀互不串 | PASS |
 | 布局 | 右下角一行，槽位 260/180/260/128、间距 36、边距 24 | 实测窗口 768/1064/1280、果冻图标中心 1640,88 | PASS |
 
@@ -82,8 +82,8 @@
 
 逐项与 `upstream/FengGe-Desktop-Pet`、`SunPet`、`ShaolanPet` 对照：
 
-- hop/root：用户点击 hop0/root 自己；接话播放广播 hop+1、root 原样；`PetRelay.announce` 不发给发送者、总开关关闭直接丢弃（[PetRelay.swift:43-52](../Sources/Hub/PetRelay.swift)）。
-- reaction：薄肌恒 false；太对了 `(from == .shaolan || from == .fengge) && hop < 3`；峰哥 `from == .sunpet && root == .shaolan && hop < 3`（[AudioPetProfiles.swift:142-167](../Sources/Audio/AudioPetProfiles.swift)）——与上游三份 Bridge 的条件一致。
+- hop/root：用户点击 hop0/root 自己；接话播放广播 hop+1、root 原样；`PetRelay.announce` 不发给发送者、总开关关闭直接丢弃（[PetRelay.swift:43-52](../Sources/PetKit/PetRelay.swift)）。
+- reaction：薄肌恒 false；太对了 `(from == .shaolan || from == .fengge) && hop < 3`；峰哥 `from == .sunpet && root == .shaolan && hop < 3`（[AudioPetProfiles.swift:142-167](../Sources/PetKit/Audio/AudioPetProfiles.swift)）——与上游三份 Bridge 的条件一致。
 - `scheduleCompanion`：再 `guard hop < 3`；取消上次待播；`overlap = hop == 1 ? max(0.05, 0.3-0.1) : 0.3`；`delay = max(0.02, duration - overlap - lead)`；到点自己正在播就放弃——与 SunPet 原实现逐行对齐。
 - 捧哏预解码：启动时 `AVAudioPlayer(contentsOf:).prepareToPlay()` 存入 `companionPlayers`；接话直接复用，不走读文件路径。
 - 开头静音补偿：`leadingSilence` 读前 0.6s、阈值 `max(0.004, peak*0.06)`、逐样本找第一声——与上游算法一致；自检断言 `0 ≤ lead ≤ duration*0.6` 且全部捧哏句都量到。
@@ -91,7 +91,7 @@
 - 轮播/固定模式/勾选排除：`ShuffleBag` 按 clip.id 存池（避免下标错位），100 轮不重复、首尾不重复；固定模式每次播钉住句；勾掉句不参与随机且太对了捧哏池同步排除——自检全 OK。
 - 隐藏：`setVisible(false)` 停播、取消字幕与待播接话；`handleRelay` 首行 `guard isVisible, relayEnabled, bridgeEnabled, !testing`——隐藏后不接话（harness 实测）。
 - 单实例与诊断：正常启动才做单实例检查；`--self-test/--chain-test/--dump-state/--preview` 豁免且只读（见 §6.1）。
-- Motion：`Sources/Audio/Motion.swift` 与 upstream 仅差文件末尾新增的 `sensorAvailable()` 便利函数（[Motion.swift:194-201](../Sources/Audio/Motion.swift)），摇晃判定 `ShakeDetector` 原样。
+- Motion：`Sources/Audio/Motion.swift` 与 upstream 仅差文件末尾新增的 `sensorAvailable()` 便利函数（[Motion.swift:194-201](../Sources/PetKit/Audio/Motion.swift)），摇晃判定 `ShakeDetector` 原样。
 
 ### 3.3 有意差异（合理）
 
@@ -349,14 +349,14 @@ cd /tmp/qa-pet-repo && ./build.sh --package && (cd dist && shasum -a 256 -c PetH
 
 `git diff v1.0.0 --stat`：`AudioPetController.swift +22`、`PetHost.swift +8`、`PetHubApp.swift +121`、`JellyPetController.swift +17`、`main.swift` 版本号、`build.sh` 版本号、README/TECHNICAL/AGENTS/DESIGN。
 
-- 协议：`PetHubContext` 新增 `linkSizeEnabled` / `petSizeTierChanged(_:tier:)`；`PetHost` 新增 `applySizeTier(_:)` / `sizeTier`（带默认实现），[Sources/Hub/PetHost.swift:21-23](../Sources/Hub/PetHost.swift)、[:54-56](../Sources/Hub/PetHost.swift)。
-- 主控：[Sources/Hub/PetHubApp.swift:34](../Sources/Hub/PetHubApp.swift) `linkSizeEnabled = hubDefaults.object(forKey:"hub.linkSize") as? Bool ?? true`（默认开）；[:133-137](../Sources/Hub/PetHubApp.swift) `petSizeTierChanged` 只在 `linkSizeEnabled` 时对 `order` 里除自己外的三只 `applySizeTier`；[:233-236](../Sources/Hub/PetHubApp.swift) toggle 持久化；[:238-241](../Sources/Hub/PetHubApp.swift) `setAllSizeTiers` 对四只应用；[:197-211](../Sources/Hub/PetHubApp.swift) 总菜单接线（「大小联动（改一只，四只一起变）」+「统一大小 ▸ 小/中/大」+ `commonSizeTier` 勾选）。
-- 语音桌宠：[AudioPetController.swift:572-607](../Sources/Audio/AudioPetController.swift) `setSize` 写自己 + `savePosition` + 回报 tier；`applySizeTier` 只应用不回调；`sizeTier` 按 `sizeChoices` 映射（190/260/340、130/180/240、190/260/340）。
-- 果冻：[JellyPetController.swift:536-554](../Sources/Jelly/JellyPetController.swift) `changeSize` 写 `pet.jelly.iconSide` + 回报 tier；`applySizeTier` 只应用不回调；档位 104/128/160。
+- 协议：`PetHubContext` 新增 `linkSizeEnabled` / `petSizeTierChanged(_:tier:)`；`PetHost` 新增 `applySizeTier(_:)` / `sizeTier`（带默认实现），[Sources/Hub/PetHost.swift:21-23](../Sources/PetKit/PetHost.swift)、[:54-56](../Sources/PetKit/PetHost.swift)。
+- 主控：[Sources/Hub/PetHubApp.swift:34](../Sources/PetHub/PetHubApp.swift) `linkSizeEnabled = hubDefaults.object(forKey:"hub.linkSize") as? Bool ?? true`（默认开）；[:133-137](../Sources/PetHub/PetHubApp.swift) `petSizeTierChanged` 只在 `linkSizeEnabled` 时对 `order` 里除自己外的三只 `applySizeTier`；[:233-236](../Sources/PetHub/PetHubApp.swift) toggle 持久化；[:238-241](../Sources/PetHub/PetHubApp.swift) `setAllSizeTiers` 对四只应用；[:197-211](../Sources/PetHub/PetHubApp.swift) 总菜单接线（「大小联动（改一只，四只一起变）」+「统一大小 ▸ 小/中/大」+ `commonSizeTier` 勾选）。
+- 语音桌宠：[AudioPetController.swift:572-607](../Sources/PetKit/Audio/AudioPetController.swift) `setSize` 写自己 + `savePosition` + 回报 tier；`applySizeTier` 只应用不回调；`sizeTier` 按 `sizeChoices` 映射（190/260/340、130/180/240、190/260/340）。
+- 果冻：[JellyPetController.swift:536-554](../Sources/PetKit/Jelly/JellyPetController.swift) `changeSize` 写 `pet.jelly.iconSide` + 回报 tier；`applySizeTier` 只应用不回调；档位 104/128/160。
 - 递归/循环审查：`applySizeTier` 的实现不再调用 `context`，主控回调只从用户菜单 action 进入一次，链路是「菜单 → setSize/changeSize → context.petSizeTierChanged → 其余三只 applySizeTier」单向，不存在回环；`guard linkSizeEnabled` 让关闭时只写自己。
 - 持久化键：语音三只 `pet.<id>.size`（Double），果冻 `pet.jelly.iconSide`（Int，沿用 1.0.0 已文档化的键）；四只互不覆盖。
-- 诊断只读：音频 `diagnostic = testing || previewing || dumping || chainTesting`（[AudioPetController.swift:64](../Sources/Audio/AudioPetController.swift)）；果冻同样四件套（[JellyPetController.swift:577-582](../Sources/Jelly/JellyPetController.swift)），`setSize`/`applySizeTier`/`persist`/`savePosition` 均有 `!diagnostic` 保护。
-- chain-test 重试：[PetHubApp.swift:530-590](../Sources/Hub/PetHubApp.swift) 首次不足 4 句时（接话让位属设计内放弃）等 1s 重试一次，第二次仍失败才 FAIL；成功仍 `exit(0)`。产品路径（播放/联动）无改动。
+- 诊断只读：音频 `diagnostic = testing || previewing || dumping || chainTesting`（[AudioPetController.swift:64](../Sources/PetKit/Audio/AudioPetController.swift)）；果冻同样四件套（[JellyPetController.swift:577-582](../Sources/PetKit/Jelly/JellyPetController.swift)），`setSize`/`applySizeTier`/`persist`/`savePosition` 均有 `!diagnostic` 保护。
+- chain-test 重试：[PetHubApp.swift:530-590](../Sources/PetHub/PetHubApp.swift) 首次不足 4 句时（接话让位属设计内放弃）等 1s 重试一次，第二次仍失败才 FAIL；成功仍 `exit(0)`。产品路径（播放/联动）无改动。
 
 ## C. 自检 / 只读（工作区 1.1.0 构建）
 
@@ -489,14 +489,14 @@ dist/ 只有 PetHub-1.1.0.{dmg,zip,sha256} 一套；1.0.0 在 /tmp/PetHub-1.0.0-
 
 ## B. 变更范围与静态审查
 
-- 新文件 `Sources/Hub/SizeSliderView.swift`（58 行）：`NSMenuItem.view` 里放 48pt 高的自定义视图（NSSlider 252×20 + 说明文字），`NSSlider(value:minValue:0.5,maxValue:1.8)`、`isContinuous = true`、`target = self`、`action = #selector(sliderChanged)`；`sliderChanged()` 更新百分比文字并回调 `onChange(slider.doubleValue)`；`applyForTesting` 设值后直接走同一个 `sliderChanged`。范围常量与 `PetSizing.minScale/maxScale`（[PetHost.swift:37-40](../Sources/Hub/PetHost.swift)）一致。
-- 菜单接线：主控 [PetHubApp.swift:168-211](../Sources/Hub/PetHubApp.swift) 与语音/果冻菜单都设 `autoenablesItems = false`（避免自定义视图被自动启用逻辑禁用）；总菜单顺序实际为「捧哏联动 → 大小联动 → 大小滑块 → 全部显示/隐藏/归位/紧凑排列」，与 15:27 版 README/DESIGN 一致（本轮已按实现修正文档顺序）。
+- 新文件 `Sources/Hub/SizeSliderView.swift`（58 行）：`NSMenuItem.view` 里放 48pt 高的自定义视图（NSSlider 252×20 + 说明文字），`NSSlider(value:minValue:0.5,maxValue:1.8)`、`isContinuous = true`、`target = self`、`action = #selector(sliderChanged)`；`sliderChanged()` 更新百分比文字并回调 `onChange(slider.doubleValue)`；`applyForTesting` 设值后直接走同一个 `sliderChanged`。范围常量与 `PetSizing.minScale/maxScale`（[PetHost.swift:37-40](../Sources/PetKit/PetHost.swift)）一致。
+- 菜单接线：主控 [PetHubApp.swift:168-211](../Sources/PetHub/PetHubApp.swift) 与语音/果冻菜单都设 `autoenablesItems = false`（避免自定义视图被自动启用逻辑禁用）；总菜单顺序实际为「捧哏联动 → 大小联动 → 大小滑块 → 全部显示/隐藏/归位/紧凑排列」，与 15:27 版 README/DESIGN 一致（本轮已按实现修正文档顺序）。
 - 主控联动：`linkSizeEnabled` 读 `hub.linkSize` 默认 true；`petSizeScaleChanged` 在联动开时对另外三只 `applySizeScale(scale)`；总菜单滑块走 `applyGlobalSizeScale` 直接四只一起（不受开关影响）；`toggleSizeLink` 持久化；`compactArrange` 见 §D。
-- 控制器：[AudioPetController.swift:578-607](../Sources/Audio/AudioPetController.swift) `applySizeScale` 先夹取 `PetSizing.minScale...maxScale`，`size = defaultSize × scale`，更新窗口尺寸，`!diagnostic` 时写 `pet.<id>.size` 并 `savePosition`；`sizeScale = size/defaultSize`；`changeSizeScale` 应用后回报主控（`applySizeScale` 本身不回调，故无递归）。果冻 [JellyPetController.swift:532-554](../Sources/Jelly/JellyPetController.swift) 同理，写 `pet.jelly.iconSide`（Int）。
+- 控制器：[AudioPetController.swift:578-607](../Sources/PetKit/Audio/AudioPetController.swift) `applySizeScale` 先夹取 `PetSizing.minScale...maxScale`，`size = defaultSize × scale`，更新窗口尺寸，`!diagnostic` 时写 `pet.<id>.size` 并 `savePosition`；`sizeScale = size/defaultSize`；`changeSizeScale` 应用后回报主控（`applySizeScale` 本身不回调，故无递归）。果冻 [JellyPetController.swift:532-554](../Sources/PetKit/Jelly/JellyPetController.swift) 同理，写 `pet.jelly.iconSide`（Int）。
 - 新协议边界：`PetHost.sizeScale/applySizeScale/visualWidth/moveToRow`；`PetHubContext.linkSizeEnabled/petSizeScaleChanged`。音频 `visualWidth = 窗口宽`，果冻 `visualWidth = iconSide`；`moveToRow` 音频直接设窗口原点，果冻把 `left/bottom` 换算成图标中心 `(left+side/2, bottom+side/2)` 再 `applyCenter()`，并在非诊断时 `persist()`。
 - 旧接口清除：`Sources/` 里已无 `applySizeTier` / `sizeTier` / `sizeChoices` / `sizeLabel`（`grep` 仅 SizeSliderView 注释里提到历史「三档」，属说明性文字）；`AudioPetProfiles` 的 min/max 改为默认大小 × 0.5/1.8。
 - 诊断只读：音频/果冻的 `diagnostic` 仍覆盖 `--self-test/--preview/--dump-state/--chain-test`；滑块回调里的 `settings.set` 与 `savePosition/persist` 都有 `!diagnostic` 保护。
-- 紧凑排列（[PetHubApp.swift:246-262](../Sources/Hub/PetHubApp.swift)）：`gap=6`、`margin=16`、宽度取 `visualWidth`、`x = max(visible.minX+16, visible.maxX-16-total)`、`bottom = visible.minY+16`、按顺序 `moveToRow`。默认布局仍由 `PetLayout`（槽位/36/24）负责，「全部归位」不变。
+- 紧凑排列（[PetHubApp.swift:246-262](../Sources/PetHub/PetHubApp.swift)）：`gap=6`、`margin=16`、宽度取 `visualWidth`、`x = max(visible.minX+16, visible.maxX-16-total)`、`bottom = visible.minY+16`、按顺序 `moveToRow`。默认布局仍由 `PetLayout`（槽位/36/24）负责，「全部归位」不变。
 
 ## C. 自检 / dump / 偏好夹取（工作区 1.2.0 构建）
 
@@ -637,8 +637,8 @@ dist/ 只有 PetHub-1.2.0.{dmg,zip,sha256}；1.1.0 在 /tmp/PetHub-1.1.0-archive
 
 `git diff v1.2.0 --stat`：`AudioPetController/AudioPetViews/PetHost/PetHubApp/JellyPetController/main.swift/build.sh` + README/TECHNICAL/AGENTS/DESIGN + `docs/preview-all.png` 重新生成；新增 `docs/preview-stage.png`（未跟踪交付图）。
 
-- **捧哏排列**（[PetHubApp.swift:303-340](../Sources/Hub/PetHubApp.swift)）：先 `applySizeScale` 1.2/1.4/1.2/0.65；`arrangementScreen()` 用薄肌窗口中心的屏幕（[PetHubApp.swift:276-284](../Sources/Hub/PetHubApp.swift)）作为基准；`base=visible.minY+36`、行内间距 6；薄肌/太对了/峰哥 按宽度从左到右，太对了 `raise = max(56, 薄肌高×0.18)`（实测 62pt）；果冻中心 `x=峰哥右边−0.55×图标边长`、`y=base+峰哥高×0.68`；随后按 `[果冻, 太对了, 峰哥, 薄肌]` 依次 `bringToFront()`（后→前，薄肌最前）；最后 `groupDragEnabled=true` 并在非诊断模式写 `hub.groupDrag=true`。
-- **绑定相对位置 / F3 修复**：`AudioPetView.mouseDragged` 首次越过 4pt 阈值时 `groupDragBegan()`，之后每步把增量回调 `groupDragMoved`，`mouseUp` 先 `savePosition()` 再 `groupDragEnded()`（[AudioPetViews.swift](../Sources/Audio/AudioPetViews.swift)）。主控 `petDragBegan` 记录其余三只基准并清零 `groupDragTotal`；`petDragged` 累加**总偏移**后用 `setGroupDragOffset(dx: total, dy: total)` 让其余三只相对基准绝对定位；`petDragEnded` 统一 `endGroupDrag()` 落盘（[PetHubApp.swift:146-170](../Sources/Hub/PetHubApp.swift)）。被拖的那只仍走原来的 `initialWindow+delta` 绝对路径；果冻 `beginGroupDrag` 记图标中心、`setGroupDragOffset` 用 `center=基准+偏移`（[JellyPetController.swift:575-590](../Sources/Jelly/JellyPetController.swift)），果冻自己的 `JellyView` 拖动仍只做原地 Q 弹、不调用 group drag。这样避免逐步读回 window server 量化后的 frame origin 造成累积丢点（F3 根因）。
+- **捧哏排列**（[PetHubApp.swift:303-340](../Sources/PetHub/PetHubApp.swift)）：先 `applySizeScale` 1.2/1.4/1.2/0.65；`arrangementScreen()` 用薄肌窗口中心的屏幕（[PetHubApp.swift:276-284](../Sources/PetHub/PetHubApp.swift)）作为基准；`base=visible.minY+36`、行内间距 6；薄肌/太对了/峰哥 按宽度从左到右，太对了 `raise = max(56, 薄肌高×0.18)`（实测 62pt）；果冻中心 `x=峰哥右边−0.55×图标边长`、`y=base+峰哥高×0.68`；随后按 `[果冻, 太对了, 峰哥, 薄肌]` 依次 `bringToFront()`（后→前，薄肌最前）；最后 `groupDragEnabled=true` 并在非诊断模式写 `hub.groupDrag=true`。
+- **绑定相对位置 / F3 修复**：`AudioPetView.mouseDragged` 首次越过 4pt 阈值时 `groupDragBegan()`，之后每步把增量回调 `groupDragMoved`，`mouseUp` 先 `savePosition()` 再 `groupDragEnded()`（[AudioPetViews.swift](../Sources/PetKit/Audio/AudioPetViews.swift)）。主控 `petDragBegan` 记录其余三只基准并清零 `groupDragTotal`；`petDragged` 累加**总偏移**后用 `setGroupDragOffset(dx: total, dy: total)` 让其余三只相对基准绝对定位；`petDragEnded` 统一 `endGroupDrag()` 落盘（[PetHubApp.swift:146-170](../Sources/PetHub/PetHubApp.swift)）。被拖的那只仍走原来的 `initialWindow+delta` 绝对路径；果冻 `beginGroupDrag` 记图标中心、`setGroupDragOffset` 用 `center=基准+偏移`（[JellyPetController.swift:575-590](../Sources/PetKit/Jelly/JellyPetController.swift)），果冻自己的 `JellyView` 拖动仍只做原地 Q 弹、不调用 group drag。这样避免逐步读回 window server 量化后的 frame origin 造成累积丢点（F3 根因）。
 - 协议：`PetHost` 新增 `bringToFront/windowFrame/moveBy/persistPosition`（排列/拖动/合成用），F3 又加 `beginGroupDrag/setGroupDragOffset/endGroupDrag`；`PetHubContext` 新增 `groupDragEnabled/petDragged/petDragEnded`，F3 加 `petDragBegan`。DESIGN §2 已同步（D6）。
 - 预览：`--preview` 先写四张单图 + `preview-all.png`，再写 `makeStageComposite()`：`stageArrange()` 后按 `[果冻,太对了,峰哥,薄肌]` 取 `previewImage()` 与 `windowFrame` 在 1440×720 画布（2x 输出 2880×1440）上按 z 序合成；果冻的 `windowFrame` 已实现（560×560 透明窗口），修复了此前合成缺果冻的问题。
 - 自检：204 → **213**（新增捧哏排列 8 项 + 绑定拖动小数步长 1 项）；`--self-test/--preview/--dump-state/--chain-test` 仍只读（`PetHubApp.diagnostic` + 各处 `!diagnostic` 保护）。
@@ -744,3 +744,135 @@ dist/ 只有 PetHub-1.3.0.{dmg,zip,sha256}；1.2.0 在 /tmp/PetHub-1.2.0-archive
 | 6 | 报告追加 + complete task-6 | 本节即追加内容 |
 
 **1.3.0 增量验收结论：PASS。F2/F3 已修复并复验，D5/D6 已修，无遗留阻塞项；交付物 `dist/PetHub-1.3.0.dmg`（sha256 `8a9d627a…`）可发布。**
+
+---
+
+# 2.0.0「自定义内容包 + PetKit 分层」增量验收（2026-10-26 19:52–20:27）
+
+> 本节是 2.0.0 架构重构的独立验收；上方 1.0.0–1.3.0 历史章节原样保留。最终验证对象为 **20:21 冻结的干净构建**：`build/桌宠合集.app`（760592 字节）与 `dist/PetHub-2.0.0.dmg`（sha256 `77d0df05…`）。
+> 过程中发现并修复 3 个实现问题（F4 窗口标题、F5 内容指纹重置、F6 自定义音频自检边界），均已用最终构建复验；旧 sha `c2406aae…`/`a53ed589…` 已作废。
+
+## A. 结论
+
+**2.0.0 验收通过（PASS）**：自定义内容包全链路、PetPack 校验边界/原子安装、PetKit/PetHub 分层、自定义编辑器、热替换/恢复、内容指纹重置、四步链 root 保持、预览/DMG/文档全部通过；无遗留阻塞项。
+
+| 项目 | 结果 |
+| --- | --- |
+| 分层与边界（PetKit → PetHub 无反向依赖；三处已知耦合文档化） | PASS |
+| PetPack 校验：format/1–200/相对路径/中文/头像/音频/坏文件 | PASS（48 项 harness） |
+| 原子安装/替换、坏包不破坏旧包、无 tmp/backup 残留、importPack | PASS |
+| 自定义编辑器窗口/表格/已有内容加载/导入 API | PASS |
+| 自定义后 displayTitle/窗口标题/菜单标题/句数/dump content=custom | PASS |
+| 四步链 root 仍 `.shaolan`，太对了/峰哥策略不变 | PASS（真实 App custom chain） |
+| 内容指纹变化重置 excludedIDs/pinnedID/randomMode，重启不复活固定句 | PASS（F5 修复后） |
+| 恢复原版 37 句 / content=builtin / 重启仍 random | PASS |
+| F6：合法 0.15s / 9s 自定义音频自检 PASS（内置仍 0.25–8s） | PASS（修复后 187 项） |
+| `--self-test` 默认 222 项 / 干净偏好不写 | PASS |
+| `--chain-test`（3 次最终构建） | PASS |
+| `--preview` 6 张 / 单实例 / dump version=2.0.0 | PASS |
+| DMG（sha/verify/卷名/2.0.0/挂载 222/只读/唯一） | PASS |
+| 独立 `/tmp` `./build.sh --package` 222 | PASS |
+| 文档（ARCHITECTURE/PETPACK/MAKE/CONTRIBUTING/PetKit README/Examples + 2.0 全套） | PASS |
+
+## B. 变更范围与静态审查
+
+- **分层**：`Sources/PetKit/`（PetHost/PetIdentity/PetRelay/PetPack/SizeSliderView/Audio/Jelly + README）与 `Sources/PetHub/`（main/PetHubApp/PetIdentity/PetLayout/CustomHeadImporter）；`build.sh` 仍把 `Sources/**/*.swift` 编成一个 `PetHub`。`grep` 确认 PetKit 不引用 `PetHubApp`/`CustomHeadImporter`；仅存在三处已在 [docs/ARCHITECTURE.md:57-70](ARCHITECTURE.md) 与 [Sources/PetKit/README.md:35-45](../Sources/PetKit/README.md) 写明的耦合：`PetLayout` 在 PetHub、`PetPack.defaultStoreURL` 写死 PetHub、素材按 bundle 目录名读。
+- **PetPack**（[Sources/PetKit/PetPack.swift](../Sources/PetKit/PetPack.swift)）：`format=1`、名字非空、头像 `NSImage` 可解码、1–200 条、路径非绝对/不含 `..`、中文非空、`AVAudioPlayer` 可解码且 >0.1s；安装先写 `HeadPet.tmp-<UUID>` 完整校验，再 `move` 旧目录为 backup、`move` 新目录就位，失败恢复 backup 并清 temp；`importPack` 先校验源目录再复用 install；`remove` 删包。
+- **自定义薄肌**（[AudioPetController.swift](../Sources/PetKit/Audio/AudioPetController.swift)）：`.shaolan` 槽位优先读内容包；`displayTitle/customName` 显示名字；`reloadContent` 热切换头像/音频/句数/窗口比例并重算位置；`contentSignature` 不一致时重置轮播勾选/固定句/播放方式；`root` 与 `PetID` 始终 `.shaolan`。`buildPanel` 的窗口标题已改 `displayTitle`（F4）。
+- **编辑器**（[Sources/PetHub/CustomHeadImporter.swift](../Sources/PetHub/CustomHeadImporter.swift)）：名字、头像选择、可多选音频、`NSTableView` 逐条中文、删除、保存安装、恢复原版；表格已有内容加载；`importCustomHeadPack` 走 `NSOpenPanel` + `PetPackStore.importPack`；`restoreBuiltinHead` 删除内容包并热切回内置。
+- **菜单/About**：菜单栏新增「自定义桌宠」子菜单（当前内容、换成我的角色、导入、打开文件夹、恢复原版）；显示/隐藏、四只子菜单、About 句数与自定义说明均走 `displayTitle`/内容包名；About 版本 2.0.0。
+- **诊断只读**：`--self-test/--chain-test/--dump-state/--preview` 下不写 `contentSignature`/轮播/固定句/位置；`--self-test` 的 `selfTestPetPack` 只在临时目录 + 独立 `UserDefaults` suite 跑安装/读取/替换/编辑器/导入/删除。
+- **F6 修复**：`selfTest` 对自定义薄肌音频下限 0.1s、上限 3600s；内置仍 0.25–8s（[AudioPetController.swift:929-932](../Sources/PetKit/Audio/AudioPetController.swift)），与 PetPack 校验一致。
+
+## C. 基线（20:21 最终构建）
+
+```text
+$ defaults delete local.pethub.app
+$ build/桌宠合集.app/Contents/MacOS/PetHub --self-test
+== 222 项检查 ==
+PASS                      # exit 0，OK=222，FAIL=0
+$ defaults read local.pethub.app
+Domain local.pethub.app does not exist
+
+$ ... --dump-state
+version=2.0.0 relay=on pets=4
+shaolan ... clips=37 ... content=builtin   # 其余三只 builtin
+$ ... --help → 桌宠合集 PetHub 2.0.0
+$ ... --preview /tmp/qa8c-preview → 6 张，跑完不写偏好
+```
+
+`--chain-test` 在最终构建 3/3 PASS（4 句、hop 0/1/2/3、root 全薄肌、无第五句；其中 19:56 的首轮曾出现 2 次额外“薄肌 hop0”，时间戳像外部真实点击，导致 6 句 FAIL；后续复跑与 20:12/20:21 构建均干净通过，按环境输入干扰记录，不算产品缺陷）。单实例回归：第二个正常启动 0.14–0.15s 退出、第一个存活。DMG 内 app 与 build 二进制 md5 相同；挂载自检 222 PASS 且不写偏好。
+
+## D. PetPack / 编辑器 harness（48/48 PASS，最终构建）
+
+编译项目 Sources、跑在 `/tmp` 拷贝 app 资源里、使用临时 store 与独立 defaults suite（不碰真实内容/偏好）：
+
+- 安装边界：1 条、2 条（替换顺序）、201 条拒绝且旧包不变、200 条 `PetPack.load` 接受、201 条 load 拒绝；空 store；默认路径 = `~/Library/Application Support/PetHub/HeadPet`。
+- 坏输入：缺 `petpack.json`、坏 JSON、`format=2`、空名字、空中文、0 条、缺头像、缺语音、头像绝对路径、`..` 路径、坏头像、坏音频、0.05s 音频，全部按预期错误拒绝。
+- 原子/回滚：失败安装（坏音频/空中文）与失败导入（坏源目录）后旧包名字/中文/指纹完全不变；store 父目录无 `tmp-*`/`backup-*` 残留；合法 `importPack` 成功且成为当前包。
+- 编辑器：窗口 720×648、contentView 子视图 >8、`NSTableView` 行数等于已安装包句数（1 行）、已存在内容加载；`store.importPack` 导入现成文件夹成功。
+- F4/F5：自定义包启动后 `displayTitle=我的老师`、窗口标题=我的老师、菜单标题「我的老师 · 自定义 · 2 句」、`content=custom:我的老师`；同内容 reload 保留 fixed/pinned/excluded；换 3 条新包后内存 reset（pool=3/random/pinned=nil）、偏好 `contentSignature` 更新、`pinnedID` 删除、`randomMode=true`；重启仍 random/pinned=nil；恢复原版后 37 句、content=builtin、重启仍 builtin/random/pinned=nil。
+
+## E. 真实 App 自定义场景（最终构建）
+
+1. 向真实 `~/Library/Application Support/PetHub/HeadPet/` 临时装 2 句「我的老师」包（头像/音频来自内置素材），启动：
+   - `--dump-state`：`shaolan ... clips=2 pool=2 ... content=custom:我的老师`，其余三只 `content=builtin`；
+   - 正常启动 CGWindowList：薄肌窗口 name = **我的老师**（F4 修复），其余窗口名正常；
+   - `--chain-test`：4 句 PASS（薄肌 hop0 → 太对了 hop1 → 峰哥 hop2 → 太对了 hop3，root 全薄肌），自定义句被实际播出（句号/时长来自包）；
+   - `--self-test`：**187 项 PASS**（2 句 = 222 − 35，和文档“条数变化”一致）；菜单标题、About 名称走 `displayTitle`（代码静态 + 菜单 harness）。
+2. 删除内容包后：`--dump-state` 恢复 `clips=37 ... content=builtin`，`--chain-test` PASS；内容包目录/偏好清理。
+3. F6 专项：装 0.15s + 9s 的 2 句包，`--self-test` → 187 OK / 0 FAIL / PASS（`shaolan: 音频 1 ...0.15s`、`音频 2 ...9.00s` 均 OK）；恢复内置后 222 PASS。
+
+## F. 本轮缺陷与修复
+
+- **F4（实现，小）**：自定义包冷启动窗口标题写死 `id.fullName`，不是 `displayTitle`。修后：真实 App CGWindowList name=我的老师；harness 冷启动标题=我的老师。
+- **F5（实现，中）**：`contentSignature` 变化只清内存与 `excludedIDs`，未清持久化 `pinnedID`/`randomMode`；换包/恢复原版后重启会复活固定句。修后：偏好 `pinnedID` 删除、`randomMode=true`，重启 `mode=random pinned=nil`（换包与恢复原版两条路径都验）。
+- **F6（实现，中）**：PetPack 校验允许 >0.1s，但 `selfTest` 逐句用 0.25–8s，合法短/长自定义音频会让 `--self-test`/`build.sh` FAIL。修后：自定义薄肌 0.1–3600s、内置仍 0.25–8s；0.15s+9s 包自检 187 PASS；Docs（TECHNICAL 自检行、PETPACK 校验规则）同步。
+- **D7/D8（文档）**：本轮未发现新的独立文档缺陷；F4/F5/F6 的文档语义在 20:21 版均已覆盖（`displayTitle` 显示、指纹重置、自定义自检音频边界）。
+
+## G. DMG 与独立构建
+
+```text
+sha256  77d0df057720d235642deaab1a62a4e9eb4742bf87b83683a27c671ac90ff4ec  PetHub-2.0.0.dmg（与 Lead 提供值一致；shasum -c OK）
+hdiutil verify → checksum is VALID；UDZO；卷名「桌宠合集」；app + Applications -> /Applications
+Info.plist：local.pethub.app / 桌宠合集 / CFBundleShortVersionString=2.0.0 / CFBundleVersion=1 / LSUIElement=true / CFBundleIconFile=AppIcon
+挂载后直接 --self-test：222 OK / 0 FAIL / PASS / exit 0；跑完 local.pethub.app 域不存在
+dist/ 只有 PetHub-2.0.0.{dmg,zip,sha256}；1.3.0 在 /tmp/PetHub-1.3.0-archive
+```
+
+独立复跑（`/tmp/qa8c-pet-repo`，rsync 源 + 排除 build/dist/.git/upstream）：`./build.sh --package` → 222 OK、末行 PASS、30.3s；dist 只出 2.0.0；sha256 -c OK；该 dmg 挂载后自检 222 PASS。
+
+## H. 文档一致性
+
+- `docs/ARCHITECTURE.md`：分层图/依赖方向/目录树/三处已知耦合/扩展点与代码一致；`Sources/PetKit/README.md` 同样列出三处耦合与“只 PetHub → PetKit”。
+- `docs/PETPACK.md`：manifest 字段、1–200、安全相对路径、中文非空、音频 >0.1s、安装位置与原子替换、限制/错误文案均与 `PetPack.swift` 一致；20:21 版补充“自定义自检 >0.1s、内置 0.25–8s”。
+- `docs/MAKE_YOUR_OWN_PET.md`：编辑器三步、效果（菜单标题/链不变）、导入/恢复/文件位置/隐私/FAQ 与实现一致。
+- `CONTRIBUTING.md`：环境/构建/自检 222（可随内容条数变化）、chain/preview 6 张、分层代码组织、加角色/内容包/许可边界/PR 清单。
+- `Examples/MyTeacher`：`petpack.json` 合法 JSON；README 明确“模板不含二进制素材、不能直接导入”，与校验行为一致。
+- README/TECHNICAL/AGENTS/DESIGN/NOTICE/UPSTREAM 全部 2.0：安装 `PetHub-2.0.0.dmg`、自定义桌宠入口、PetKit/PetHub 路径、`contentSignature`、用户内容版权/不上传；NOTICE 增加用户导入内容条款。
+- 全仓库（除 QA-REPORT 历史）无 `1.3.0` / `Sources/Hub` / `Sources/Audio/` / `Sources/Jelly/` / `213 项` 残留；所有 Markdown 相对链接无坏链；示例 JSON 可解析。
+
+## I. 非阻塞观察与盲区
+
+- **chain 干扰**：19:56 首轮出现 2 次额外“薄肌 hop0”（+13/+14s，像外部真实点击），使该次 6 句 FAIL；随后 20:12 构建 3/3、20:21 构建 3/3 干净 PASS。按环境输入干扰记录，不作为产品缺陷。
+- **路径安全**：`checkRelative` 是词法校验（非绝对、无 `..`、非空），没有解析 symlink；恶意包理论上可放指向包外的符号链接（只会被当头像/音频读取，不执行代码，且 App 不联网）。属低风险，若以后加强可按 `resolvingSymlinksInPath` 校验真实前缀。
+- **内容指纹**：由 name/avatar/author + 每条 file/label/文件大小组成，不哈希音频内容；同尺寸但内容不同的音频改动不会触发重置（正常编辑器/导入会重新复制文件，大小通常变化）。
+- **菜单/关于开销**：`makeHubMenu` 与 About 会调用 `PetPackStore.current()` 重新 `load` + 校验（含逐条 AVAudioPlayer 解码）；200 条包每次打开菜单/关于都要解码一遍，可能带来可感知延迟；不影响正确性。
+- **回滚分支**：坏包失败发生在“临时目录校验”阶段，旧包完全未动（已实测）；“备份后替换失败再恢复”这一窗口分支通过代码审查（temp/备份/恢复顺序正确），未用文件系统故障强制触发。
+- **自检上限**：自定义音频自检上限 3600s，而 `docs/PETPACK.md` 写“单条时长没有上限”；>1 小时的合法内容包会让自检 FAIL（极端边界）。
+- 默认布局/全部归位仍用 `PetLayout.screen()`（`NSScreen.main`），App 不活跃时初始一排可能落在副屏（本轮曾在副屏看到 dump）；这是 1.x 遗留、未在本轮范围，记录观察。
+- 盲区：无辅助功能权限，未真实鼠标点击编辑器按钮/导入面板/菜单；通过真实窗口/表格实例化、`PetPackStore.install/importPack`、真实 PetHubApp/PetPack harness、真实 App dump/chain/self-test/CGWindowList 覆盖。`selfTestPetPack` 使用临时目录 + 独立 suite，未触碰真实内容。
+
+## J. task-8 清单覆盖
+
+| # | 要求 | 结果 |
+| --- | --- | --- |
+| 1 | 干净 build.sh PASS / self-test 222 只读 / dump 2.0 / chain 3 次 / preview 6 / 单实例 | PASS（§C） |
+| 2 | PetPack 全链路与边界（1/2/200+/坏文件/路径/原子回滚/导入/编辑器） | PASS（§D） |
+| 3 | 真实 App 自定义装包 → dump/chain/displayTitle → 恢复原版 37 句 | PASS（§E） |
+| 4 | contentSignature 变更重置 excludedIDs/pinnedID（+ 重启不复活） | PASS（F5 修复后，§D/§E） |
+| 5 | DMG sha/verify/卷名/2.0.0/挂载 222/只读/唯一 + 独立构建 | PASS（§G） |
+| 6 | 文档（ARCHITECTURE/PETPACK/MAKE/CONTRIBUTING/PetKit README/Examples + 2.0 化） | PASS（§H） |
+| 7 | 报告追加 + complete task-8 | 本节即追加内容 |
+
+**2.0.0 增量验收结论：PASS。F4/F5/F6 已修复并复验；无遗留阻塞项；交付物 `dist/PetHub-2.0.0.dmg`（sha256 `77d0df05…`）可发布。**
