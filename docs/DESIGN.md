@@ -68,8 +68,10 @@ protocol PetHost: AnyObject {
     func previewImage() -> NSImage?
     func showStartupHint()
     var stateDescription: String { get }
-    func applySizeTier(_ tier: Int)   // 0=小 1=中 2=大，按各只自己的三档
-    var sizeTier: Int { get }
+    var sizeScale: Double { get }        // 相对默认大小，1.0 = 默认；滑块 0.5–1.8
+    func applySizeScale(_ scale: Double)
+    var visualWidth: CGFloat { get }      // 紧凑排列算间距用
+    func moveToRow(left: CGFloat, bottom: CGFloat)
 }
 
 protocol PetHubContext: AnyObject {
@@ -78,6 +80,8 @@ protocol PetHubContext: AnyObject {
     func hidePet(_ id: PetID); func showPet(_ id: PetID); func togglePet(_ id: PetID)
     func forwardSpeech(_ speech: PetSpeech)
     func quitApp()
+    var linkSizeEnabled: Bool { get }
+    func petSizeScaleChanged(_ id: PetID, scale: Double)
 }
 
 struct PetSpeech: Equatable { let from: PetID; let clipID: Int; let label: String
@@ -108,7 +112,7 @@ enum PetLayout { // 薄肌→太对了→峰哥→果冻，屏幕右下角一行
 | | 薄肌 shaolan | 太对了 sunpet | 峰哥 fengge |
 |---|---|---|---|
 | 素材 | 37 句 .wav | 28 句 .m4a | 11 句 .wav |
-| 默认大小 | 260（小 190 / 中 260 / 大 340，标签「人物大小」） | 180（130/180/240，标签「头像大小」） | 260（190/260/340，「人物大小」） |
+| 默认大小 | 260（滑块 50%–180%） | 180（滑块 50%–180%） | 260（滑块 50%–180%） |
 | 动画 | 竖向压扁 12%，30fps | 摇晃：绕中心 ±0.055rad + 上浮 3px | 同薄肌 |
 | 接话策略 reaction | 从不接 | `(from == .shaolan || from == .fengge) && hop < 3` | `from == .sunpet && root == .shaolan && hop < 3` |
 | 捧哏池 | 无 | id ∈ {1,2,4,11,13,14}，且排除 excludedIDs | 全部 11 句 |
@@ -160,7 +164,7 @@ caption     = (3, height - captionBand + 4, width - 6, 34)
 - 窗口 560×560，只有图标附近（半径 `iconSide * 0.47`）接收点击，其余透明区让给桌面
 - 按压以按压点为圆心整体放大、CIBumpDistortion 局部肿起、拖动朝光标侧拉伸、松手 Q 弹
 - 窗口坐标全程不动；静止时计时器停掉
-- 图标 Claude/GPT/Gemini 三选一；大小 104/128/160；位置/大小/图标记住
+- 图标 Claude/GPT/Gemini 三选一；大小用滑块 50%–180%（默认 128）；位置/大小/图标记住
 - 菜单：回到原位、大小、图标、隐藏果冻
 - 自检：原 `runSelfTest()` 的弹簧/软限位/渲染断言全部保留，改用 `report` 回调；
   检查图仍写到 `NSTemporaryDirectory()/jelly-pet-selftest/`
@@ -193,9 +197,9 @@ caption     = (3, height - captionBand + 4, width - 6, 34)
   薄肌 ▸ / 太对了 ▸ / 峰哥 ▸ / 果冻 ▸   （各自完整菜单）
   ───
   捧哏联动[✓]（全局开关，持久化到 hub.relayEnabled）
-  大小联动[✓]（默认开，持久化到 hub.linkSize；改一只四只一起变）
-  统一大小 ▸ 小 / 中 / 大（一键四只同档）
-  全部显示 / 全部隐藏 / 全部归位
+  大小联动[✓]（默认开，持久化到 hub.linkSize；每只菜单的滑块是否同步四只）
+  大小滑块（50%–180%，总菜单永远四只一起）
+  全部显示 / 全部隐藏 / 全部归位 / 紧凑排列（约 6pt 间距、16pt 边距）
   ───
   关于桌宠合集 / 退出桌宠合集
   ```
@@ -203,8 +207,8 @@ caption     = (3, height - captionBand + 4, width - 6, 34)
 - 关于面板：版本、四只句数、上游仓库链接、素材版权声明
 - CLI（`applicationDidFinishLaunching` 里分流，跑完 `exit`）：
   - `--self-test`：四只 controller 的 `selfTest` + 主控断言（relay 机制、三只 reaction 策略、
-    菜单结构、大小联动（含真实菜单 action 路径）、显隐、默认布局：三只语音窗口 + 果冻可见图标
-    互不重叠且完整落在屏幕可见区），
+    菜单结构、大小滑块（总菜单/单只真实 action 路径）、大小联动、紧凑排列、显隐、默认布局：
+    三只语音窗口 + 果冻可见图标互不重叠且完整落在屏幕可见区），
     最后一行 `PASS`，失败 `FAIL: [...]`，退出码 1
   - `--chain-test`：打开 trace、静音、模拟点薄肌，等 18 秒（全程约 21 秒；偶发丢句自动重试一次），校验口头记录是
     `[shaolan hop0 root shaolan, sunpet hop1, fengge hop2, sunpet hop3]` 且没有第五句 → `PASS`
@@ -226,13 +230,13 @@ caption     = (3, height - captionBand + 4, width - 6, 34)
 4. 拷贝 `Assets/shaolan|sun|fengge|jelly` → `Contents/Resources/<同名>`，
    `Assets/AppIcon.icns` → Resources，`LICENSE`+`licenses/` → Resources
 5. Info.plist：CFBundleExecutable=PetHub、CFBundleIdentifier=local.pethub.app、
-   CFBundleName/DisplayName=桌宠合集、ShortVersion=1.1.0、Version=1、LSMinimumSystemVersion=14.0、
+   CFBundleName/DisplayName=桌宠合集、ShortVersion=1.2.0、Version=1、LSMinimumSystemVersion=14.0、
    LSUIElement=true、NSHighResolutionCapable=true、CFBundleIconFile=AppIcon
 6. `xattr -cr`，`codesign --force --sign -`
 7. 跑 `--self-test`，最后一行必须是 PASS（`--no-self-test` 可跳过）
 8. `--package`：`ditto` 出 zip；stage 目录放 app + `Applications` 软链；
-   `hdiutil create -volname 桌宠合集 -srcfolder stage -format UDZO dist/PetHub-1.1.0.dmg`；
-   `shasum -a 256` 写 `PetHub-1.1.0.sha256`
+   `hdiutil create -volname 桌宠合集 -srcfolder stage -format UDZO dist/PetHub-1.2.0.dmg`；
+   `shasum -a 256` 写 `PetHub-1.2.0.sha256`
 
 `install.sh`：`--build` 编译并装进 /Applications、启动；`--uninstall` 退出并删除；默认从 `build/` 装。
 
@@ -262,6 +266,7 @@ claude-mark.png）排成 2×2，画进 1024×1024 圆角底板（浅色渐变/�
 - [ ] 真机启动：四只同时在屏幕右下角一排；三只语音窗口 + 果冻的可见图标互不重叠
       （果冻 560×560 透明窗口允许伸出屏幕，判的是图标 128×128 的可见区域）；菜单栏只有一个「桌宠」
 - [ ] 点每只都能出声/形变；右键菜单完整；隐藏/显示/全部归位可用
-- [ ] 大小联动：默认开时改任意一只的大小四只同档变化；关掉后各改各的；「统一大小」一键四只
+- [ ] 大小滑块：50%–180% 无级变化；总菜单拖一次四只一起变；每只菜单滑块受「大小联动」控制
+- [ ] 紧凑排列：一键约 6pt 间距、16pt 边距贴右下角，四只不重叠且在屏内
 - [ ] `hdiutil verify dist/*.dmg` 通过；挂载后 `桌宠合集.app` 能启动并自检
 - [ ] README/TECHNICAL/NOTICE 与实现一致，无夸大

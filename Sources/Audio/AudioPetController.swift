@@ -378,6 +378,8 @@ final class AudioPetController: NSObject, PetHost, AVAudioPlayerDelegate {
 
     func makeMenu() -> NSMenu {
         let menu = NSMenu()
+        // 有自定义视图（大小滑块、轮播复选框），关掉自动启用判定，免得被当成无 action 的禁用项。
+        menu.autoenablesItems = false
         let header = item("\(profile.menuHeader) · \(clips.count) 句原声", nil)
         header.isEnabled = false
         menu.addItem(header)
@@ -471,14 +473,11 @@ final class AudioPetController: NSObject, PetHost, AVAudioPlayerDelegate {
         volumeItem.submenu = volumes
         menu.addItem(volumeItem)
 
-        let sizeItem = item(profile.sizeLabel, nil)
-        let sizes = NSMenu()
-        for choice in profile.sizeChoices {
-            let option = item(choice.name, #selector(setSize(_:)), tag: Int(choice.side))
-            option.state = Int(size) == Int(choice.side) ? .on : .off
-            sizes.addItem(option)
+        // 大小滑块直接塞进菜单项视图：拖动时菜单不关，四只可以实时一起变。
+        let sizeItem = NSMenuItem()
+        sizeItem.view = SizeSliderView(scale: sizeScale) { [weak self] scale in
+            self?.changeSizeScale(scale)
         }
-        sizeItem.submenu = sizes
         menu.addItem(sizeItem)
 
         menu.addItem(item("移回屏幕右下角", #selector(resetPosition)))
@@ -573,35 +572,35 @@ final class AudioPetController: NSObject, PetHost, AVAudioPlayerDelegate {
         settings.set(volume, "volume")
     }
 
-    @objc private func setSize(_ sender: NSMenuItem) {
-        size = CGFloat(sender.tag)
-        if let panel {
-            let target = NSSize(width: size,
-                                height: profile.layout.panelHeight(for: size, faceRatio: imageRatio))
-            panel.setContentSize(target)
-        }
-        if !diagnostic { settings.set(Double(size), "size") }
-        savePosition()
-        if let tier = profile.sizeChoices.firstIndex(where: { Int($0.side) == sender.tag }) {
-            context?.petSizeTierChanged(id, tier: tier)
-        }
+    private func changeSizeScale(_ scale: Double) {
+        applySizeScale(scale)
+        context?.petSizeScaleChanged(id, scale: sizeScale)
     }
 
-    /// 0=小、1=中、2=大。各只按自己的三档映射，不强行拉成同样像素。
-    var sizeTier: Int {
-        profile.sizeChoices.firstIndex(where: { Int($0.side) == Int(size) }) ?? 1
+    /// 1.0 = 默认大小；滑块范围 50%–180%。
+    var sizeScale: Double {
+        guard profile.defaultSize > 0 else { return 1 }
+        return Double(size / profile.defaultSize)
     }
 
-    /// 主控「统一大小」/ 别的桌宠改了大小后调这里，只应用不回调，避免循环。
-    func applySizeTier(_ tier: Int) {
-        guard profile.sizeChoices.indices.contains(tier) else { return }
-        size = profile.sizeChoices[tier].side
+    /// 主控滑块 / 别的桌宠改了大小后调这里，只应用不回调，避免循环。
+    func applySizeScale(_ scale: Double) {
+        let clamped = min(max(scale, PetSizing.minScale), PetSizing.maxScale)
+        size = profile.defaultSize * CGFloat(clamped)
         if let panel {
             panel.setContentSize(NSSize(width: size,
                                         height: profile.layout.panelHeight(for: size, faceRatio: imageRatio)))
         }
         if !diagnostic { settings.set(Double(size), "size") }
         savePosition()
+    }
+
+    var visualWidth: CGFloat { panel?.frame.width ?? panelSize.width }
+
+    func moveToRow(left: CGFloat, bottom: CGFloat) {
+        guard let panel else { return }
+        panel.setFrameOrigin(NSPoint(x: left, y: bottom))
+        if !diagnostic { savePosition() }
     }
 
     @objc private func resetPosition() {

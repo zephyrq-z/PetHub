@@ -461,3 +461,148 @@ dist/ 只有 PetHub-1.1.0.{dmg,zip,sha256} 一套；1.0.0 在 /tmp/PetHub-1.0.0-
 | 7 | 报告追加 + complete task-4 | 本节即追加内容 |
 
 **1.1.0 增量验收结论：PASS。无阻塞缺陷；交付物可发布。**
+
+---
+
+# 1.2.0「滑块大小 + 紧凑排列」增量验收（2026-10-26 15:04–15:32）
+
+> 本节是 1.1.0 交付之后的增量验收；上方 1.0.0 / 1.1.0 历史章节原样保留、未覆盖。验收对象为 15:02 冻结的 `build/桌宠合集.app` 与 `dist/PetHub-1.2.0.dmg`（sha256 `ceee953b…`，验收期间 Sources/build/dist 未再变动）。
+> 变更可用 `git diff v1.1.0 --stat` 复核（10 个文件 +192/−36 量级，新增未跟踪文件 `Sources/Hub/SizeSliderView.swift`）。
+
+## A. 结论
+
+**1.2.0 验收通过（PASS）**：大小滑块的菜单内 NSSlider 接线、50%–180% 范围与夹取、总菜单滑块永远四只一起、单只滑块受「大小联动」控制、四只偏好写入、紧凑排列（约 6pt/16pt、底边对齐、屏内不重叠、100%/180% 两档）、compact 后持久化与重启恢复、全部归位回标准布局、`--self-test` 204 项只读、`--chain-test`、dump/preview、DMG 与独立构建、文档一致性全部通过。无阻塞缺陷。
+
+| 项目 | 结果 |
+| --- | --- |
+| SizeSliderView（NSMenuItem.view + 连续 NSSlider + target/action） | PASS（真实 target-action 派发 + applyForTesting） |
+| 50%–180% 范围、四只按各自默认比例映射、两端夹取 | PASS |
+| 总菜单滑块 160% → 四只一起变 | PASS（自检真实 hub slider） |
+| 单只滑块（联动开/关）、写四只偏好、无递归 | PASS（真实 PetHubApp harness） |
+| 紧凑排列 100% / 180%：底边 16、间距约 6、贴右 16、屏内、不重叠 | PASS |
+| compact 持久化 + 重启恢复；全部归位回标准槽位 | PASS |
+| `--self-test` 204 项 / 干净偏好不写 | PASS |
+| `--chain-test`（4 句、hop 0/1/2/3、root 全薄肌、无第五句） | PASS（3/3） |
+| `--dump-state`（version=1.2.0）/ `--preview` | PASS |
+| DMG（sha/verify/卷名/Info.plist 1.2.0/挂载自检 204/只读） | PASS |
+| 文档（1.2.0、滑块 50%–180%、紧凑排列、204、旧字样清除） | PASS（D3/D4 已修并复核） |
+
+## B. 变更范围与静态审查
+
+- 新文件 `Sources/Hub/SizeSliderView.swift`（58 行）：`NSMenuItem.view` 里放 48pt 高的自定义视图（NSSlider 252×20 + 说明文字），`NSSlider(value:minValue:0.5,maxValue:1.8)`、`isContinuous = true`、`target = self`、`action = #selector(sliderChanged)`；`sliderChanged()` 更新百分比文字并回调 `onChange(slider.doubleValue)`；`applyForTesting` 设值后直接走同一个 `sliderChanged`。范围常量与 `PetSizing.minScale/maxScale`（[PetHost.swift:37-40](../Sources/Hub/PetHost.swift)）一致。
+- 菜单接线：主控 [PetHubApp.swift:168-211](../Sources/Hub/PetHubApp.swift) 与语音/果冻菜单都设 `autoenablesItems = false`（避免自定义视图被自动启用逻辑禁用）；总菜单顺序实际为「捧哏联动 → 大小联动 → 大小滑块 → 全部显示/隐藏/归位/紧凑排列」，与 15:27 版 README/DESIGN 一致（本轮已按实现修正文档顺序）。
+- 主控联动：`linkSizeEnabled` 读 `hub.linkSize` 默认 true；`petSizeScaleChanged` 在联动开时对另外三只 `applySizeScale(scale)`；总菜单滑块走 `applyGlobalSizeScale` 直接四只一起（不受开关影响）；`toggleSizeLink` 持久化；`compactArrange` 见 §D。
+- 控制器：[AudioPetController.swift:578-607](../Sources/Audio/AudioPetController.swift) `applySizeScale` 先夹取 `PetSizing.minScale...maxScale`，`size = defaultSize × scale`，更新窗口尺寸，`!diagnostic` 时写 `pet.<id>.size` 并 `savePosition`；`sizeScale = size/defaultSize`；`changeSizeScale` 应用后回报主控（`applySizeScale` 本身不回调，故无递归）。果冻 [JellyPetController.swift:532-554](../Sources/Jelly/JellyPetController.swift) 同理，写 `pet.jelly.iconSide`（Int）。
+- 新协议边界：`PetHost.sizeScale/applySizeScale/visualWidth/moveToRow`；`PetHubContext.linkSizeEnabled/petSizeScaleChanged`。音频 `visualWidth = 窗口宽`，果冻 `visualWidth = iconSide`；`moveToRow` 音频直接设窗口原点，果冻把 `left/bottom` 换算成图标中心 `(left+side/2, bottom+side/2)` 再 `applyCenter()`，并在非诊断时 `persist()`。
+- 旧接口清除：`Sources/` 里已无 `applySizeTier` / `sizeTier` / `sizeChoices` / `sizeLabel`（`grep` 仅 SizeSliderView 注释里提到历史「三档」，属说明性文字）；`AudioPetProfiles` 的 min/max 改为默认大小 × 0.5/1.8。
+- 诊断只读：音频/果冻的 `diagnostic` 仍覆盖 `--self-test/--preview/--dump-state/--chain-test`；滑块回调里的 `settings.set` 与 `savePosition/persist` 都有 `!diagnostic` 保护。
+- 紧凑排列（[PetHubApp.swift:246-262](../Sources/Hub/PetHubApp.swift)）：`gap=6`、`margin=16`、宽度取 `visualWidth`、`x = max(visible.minX+16, visible.maxX-16-total)`、`bottom = visible.minY+16`、按顺序 `moveToRow`。默认布局仍由 `PetLayout`（槽位/36/24）负责，「全部归位」不变。
+
+## C. 自检 / dump / 偏好夹取（工作区 1.2.0 构建）
+
+```text
+$ defaults delete local.pethub.app
+$ build/桌宠合集.app/Contents/MacOS/PetHub --self-test
+== 204 项检查 ==
+PASS                      # exit 0，OK=204，FAIL=0
+$ defaults read local.pethub.app
+Domain local.pethub.app does not exist      ← 干净域跑完不写偏好
+```
+
+新增/替换断言全 OK：总菜单滑块 160% → 四只 160%、薄肌菜单滑块 70% → 四只 70%、关掉联动只改自己、紧凑排列底边对齐/屏内/不重叠/语音间距 6pt/峰哥-果冻间距 6pt；菜单结构断言为 18 项。`--self-test` 只读（含滑块与 compact 动作）已由上面 Domain does not exist 证明。
+
+`--dump-state`：
+
+```text
+version=1.2.0 relay=on pets=4
+shaolan ... size=260x296 pos=768,24 ...
+sunpet  ... size=180x228 pos=1064,24 ...
+fengge  ... size=260x291 pos=1280,24 ...
+jelly visible=true size=560x560 pos=1640,88
+```
+
+偏好夹取/恢复（写入 `size=10 / 999`、`iconSide=1000` 后 `--dump-state`）：薄肌 130x166、太对了 324x372（10→50%、999→180%），`--dump-state` 前后偏好文件逐字节不变（只读）；`--preview` 四张 2x（520×592/360×456/520×582/1120×1120）+ 合影 2880×1280，不写偏好。
+
+单实例回归：第二个正常启动 0.13s 退出、第一个存活；CGWindowList 见 4 只 layer=3 窗口（默认 768/1064/1280,24，果冻 560 透明窗口）+ 状态项。
+
+## D. 真实主控 harness（PetHubApp 正常启动，独立偏好域）
+
+用项目 `Sources/` 编出独立 app（bundle id `local.pethub.hub-harness12`，资源拷贝自 1.2.0 build），真实跑 `PetHubApp`，用 Mirror 取内部 `pets` 后直接操作真实 `SizeSliderView`/菜单 action（不碰真实 `local.pethub.app`）。
+
+**Phase 1（干净域，34/34 PASS）关键项**：
+- 六项接线检查：默认宽度 260/180/260/128；桌宠菜单 `autoenablesItems=false`；滑块 min/max=0.5/1.8；`isContinuous + target/action` 非空；果冻菜单同样有滑块。
+- 真实 NSSlider target-action 派发（`slider.doubleValue=0.9` + `NSApp.sendAction(action,to:target,from:slider)`）→ 四只都 90%；`applyForTesting(0.7)`（走同一 `sliderChanged`）→ 四只 70%，窗口 182/126/182，偏好 `pet.shaolan.size=182 / pet.sunpet.size=126 / pet.fengge.size=182 / pet.jelly.iconSide=89`，未误写果冻位置。
+- 干净域无 `hub.linkSize`，第一次 toggle 写 false（默认开），再开写 true；关联动时太对了滑块 50% → 只有太对了 0.5，其余保持 0.7。
+- 夹取：`applySizeScale(2.5)→1.8`、`applySizeScale(0.1)→0.5`、滑块拖到 1%→0.5、拖到 500%→1.8。
+- 紧凑排列 100%：四只底边 16、全在 visibleFrame、互不重叠、间距 6.0/6.0/6.0、宽度 260/180/260/128、最右=1712（visible.maxX−16）。
+- 紧凑排列 180%：先滑块到 180%（四只 1.8/1.8/1.8/1.8），四只底边 16、屏内、不重叠、间距 6.0/6.0/6.6、宽度 468/324/468/230、最右=1712；薄肌 origin 203.6、太对了 677.6、峰哥 1007.6、果冻图标中心 1596.8（phase1 实测 203,16 / 677,16 / 1007,16 / 1481,15 取整打印）。
+
+**Phase 2（重启，9/9 PASS，同一偏好域）**：
+- 重启恢复：大小 `[1.8, 1.8, 1.8, 1.796875]`（果冻 `iconSide` 存 Int 230，见 O9），compact 位置恢复（薄肌 203.6,16；果冻中心 x 1596.8）。
+- 「全部归位」真实 action：薄肌/太对了/峰哥 回标准槽位 664/992/1176,24（`PetLayout.origin` 按各自 180% 面板宽算），果冻回默认中心 1640,88；大小保持 180% 不变。
+- 终止后偏好落盘：`pet.*.panelX/Y` 分别为 664/992/1176,24，`pet.jelly.centerX/Y=1640,88`，尺寸 468/324/468/230。
+
+日志：`/tmp/qa5-hub-phase1.log`、`/tmp/qa5-hub-phase2.log`。
+
+> 说明：总菜单滑块 160% 的真实 hub 路径由 `--self-test` 直接取 `makeHubMenu()` 里的 `SizeSliderView` 走 `applyForTesting(1.6)` 覆盖（输出行 `OK 总菜单大小滑块：四只一起到 160%`）；harness 额外覆盖了单只滑块的真实 NSSlider target-action 与联动/持久化。**没有辅助功能权限，未做真实鼠标在菜单里按住拖动**（见 §H 盲区）。
+
+## E. chain-test
+
+3 次连续实测均 PASS、首跑即 4 句、无第五句、未触发重试：
+
+```text
+$ build/桌宠合集.app/Contents/MacOS/PetHub --chain-test
+[chain] 第 1 次：3 秒后模拟点一下薄肌，等四步链跑完
+[chain]   0..3: 薄肌 hop0 → 太对了 hop1 → 峰哥 hop2 → 太对了 hop3，root 全薄肌
+PASS 四步捧哏链：…；real 0m19.231s；跑完偏好域不存在
+```
+
+`--chain-test` 重试实现未改（同 1.1.0），重试分支未强制触发；日志 `/tmp/qa5-chain-{1,2,3}.log`。
+
+## F. DMG 与独立构建
+
+```text
+sha256  ceee953bcfbeeee9aae51b7569fcc2ec541e2654c97cb28b326856d4bfe7dcde  PetHub-1.2.0.dmg（与 Lead 提供值一致，shasum -c OK）
+hdiutil verify → checksum is VALID；UDZO；卷名「桌宠合集」；app + Applications -> /Applications
+Info.plist：local.pethub.app / 桌宠合集 / CFBundleShortVersionString=1.2.0 / CFBundleVersion=1 / LSUIElement=true / CFBundleIconFile=AppIcon
+挂载后直接 --self-test：204 OK / 0 FAIL / PASS / exit 0，跑完 local.pethub.app 域不存在；codesign verify OK
+dist/ 只有 PetHub-1.2.0.{dmg,zip,sha256}；1.1.0 在 /tmp/PetHub-1.1.0-archive
+```
+
+独立复跑（`/tmp/qa5-pet-repo`，rsync 源 + 排除 build/dist/.git/upstream）：`./build.sh --package` → 204 OK、末行 PASS、27.2s；dist 只出 1.2.0 一套，sha256 -c OK；该 dmg 挂载后自检 204 PASS、Info.plist 1.2.0、不写偏好。
+
+## G. 文档一致性
+
+- 1.2.0 版本号：README 安装/构建、TECHNICAL dump/构建/ShortVersion、AGENTS、DESIGN §6/§8、`main.swift`/PetHubApp 关于与 dump、`build.sh` 全部一致。
+- 滑块：README/TECHNICAL/AGENTS/DESIGN 均写 50%–180%、默认 100%、总菜单永远四只一起、单只受 `hub.linkSize` 控制；`hub.linkSize` 偏好行保留。
+- 紧凑排列：统一为「约 6pt 间距 + 16pt 边距」并说明像素对齐可能差零点几（15:27 版）。
+- 旧字样：文档中无残留 `1.1.0` / `201` / `统一大小` / `applySizeTier` / `sizeTier` / `sizeChoices` / 「小/中/大」三档（`grep` 无命中；源码仅 SizeSliderView 注释提到历史三档）。
+- 本轮发现并已由 Lead 修复的文档遗漏（15:27 版复核）：
+  - **D3**：`docs/DESIGN.md` 的 `PetHubContext` 缺 `linkSizeEnabled` / `petSizeScaleChanged`，已补（现 :83-84）。
+  - **D4**：`TECHNICAL.md` §2 模块表缺 `Sources/Hub/SizeSliderView.swift`，已补（现 :41）。
+  - 菜单条目顺序改为「大小联动 → 大小滑块」，与 `makeHubMenu` 一致；6pt 统一为「约 6pt」。
+- README/TECHNICAL 相对链接全部存在；`docs/preview-all.png` 链接有效（2880×1280）。
+- NOTICE/UPSTREAM/licenses 未被本轮改动，内容仍与 1.0.0/1.1.0 验收一致。
+
+## H. 非阻塞观察与盲区
+
+- O8：180% 下「全部归位」按标准槽位（默认大小算）会溢出/互相压住：果冻图标中心仍是 1640、边 230 → 右缘 1755 > visibleFrame.maxX 1728，即贴出屏幕约 27pt；三只语音窗口也会互相压。这是 DESIGN §5 明确的「改大小后允许溢出槽位」，标准布局不是大尺寸的收拢方案；大尺寸应使用「紧凑排列」（180% 已验五段全在屏内、贴 16pt）。实现无 bug，建议文档/README 可补一句用法提示（本轮未改）。
+- O9：果冻 `iconSide` 偏好仍存 Int，180% = 128×1.8 = 230.4 落盘为 230，重启后 `sizeScale = 230/128 = 1.796875`（180% 差 0.3%，肉眼无感）；`commonScale` 的 0.01 容差可正确识别为一致。
+- O10：四只比例不一致时总菜单滑块回 100%（`commonScale()==nil`），拖一下即四只统一；行为合理，文档未专门描述。
+- O11：`moveToRow`/`savePosition` 在 `isVisible=false` 时不落盘（`savePosition` 原有守卫）；隐藏状态执行紧凑排列，其新位置不会持久化，重新显示后位置可能回旧值。属边缘操作组合，未发现正常路径影响。
+- 盲区：无辅助功能/屏幕录制权限，**未做真实鼠标在打开菜单里按住 NSSlider 连续拖动**；用真实 NSSlider target-action 派发 + `applyForTesting`（同一个 `sliderChanged`）+ 自检里的真实 hub 菜单滑块覆盖。`--chain-test` 重试分支未强制触发。真实鼠标点击/肉眼动画建议交付后人工补 1 分钟。
+- 清理：测试期间弹出的 `/Volumes/桌宠合集` 是遗留的 **1.1.0** 挂载（plist 已确认），已 `hdiutil detach`；当前无 PetHub 进程、无挂载、偏好域已清空，`build/`、`dist/` 未被改动。
+
+## I. task-5 清单覆盖
+
+| # | 要求 | 结果 |
+| --- | --- | --- |
+| 1 | 静态审查滑块/autoenablesItems/范围/映射/无递归/总菜单 vs 单只/compact 坐标 | PASS（§B） |
+| 2 | build.sh PASS / self-test 204 / 不写偏好 / dump 1.2.0 / chain PASS | PASS（§C、§E；独立构建亦 204） |
+| 3 | harness：总菜单 160%、单只 70%、关联动、偏好、重启、50%/180% 夹取 | PASS（§D；总菜单真实路径由自检覆盖） |
+| 4 | 紧凑排列 100%/180%、底边/间距/屏内/不重叠/持久化/全部归位 | PASS（§D） |
+| 5 | DMG sha/verify/卷名/1.2.0/挂载自检 204/只读/dist 唯一 | PASS（§F） |
+| 6 | 文档（1.2.0/滑块/紧凑排列/hub.linkSize/204/旧字样） | PASS（§G；D3/D4 已修） |
+| 7 | 报告追加 + complete task-5 | 本节即追加内容 |
+
+**1.2.0 增量验收结论：PASS。无阻塞缺陷；交付物可发布。**

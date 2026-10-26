@@ -130,10 +130,10 @@ final class PetHubApp: NSObject, NSApplicationDelegate, PetHubContext {
         relay.announce(speech)
     }
 
-    func petSizeTierChanged(_ id: PetID, tier: Int) {
+    func petSizeScaleChanged(_ id: PetID, scale: Double) {
         guard linkSizeEnabled else { return }
         for other in PetLayout.order where other != id {
-            pets[other]?.applySizeTier(tier)
+            pets[other]?.applySizeScale(scale)
         }
     }
 
@@ -168,6 +168,7 @@ final class PetHubApp: NSObject, NSApplicationDelegate, PetHubContext {
 
     private func makeHubMenu() -> NSMenu {
         let menu = NSMenu()
+        menu.autoenablesItems = false
         let header = NSMenuItem(title: "桌宠合集 · 四只", action: nil, keyEquivalent: "")
         header.isEnabled = false
         menu.addItem(header)
@@ -198,20 +199,16 @@ final class PetHubApp: NSObject, NSApplicationDelegate, PetHubContext {
         sizeLink.state = linkSizeEnabled ? .on : .off
         menu.addItem(sizeLink)
 
-        let sizeRoot = NSMenuItem(title: "统一大小", action: nil, keyEquivalent: "")
-        let sizeMenu = NSMenu()
-        let commonTier = commonSizeTier()
-        for (tier, name) in ["小", "中", "大"].enumerated() {
-            let entry = menuItem(name, #selector(setAllSizeTiers(_:)), tag: tier)
-            entry.state = commonTier == tier ? .on : .off
-            sizeMenu.addItem(entry)
+        let sizeItem = NSMenuItem()
+        sizeItem.view = SizeSliderView(scale: commonScale() ?? 1.0) { [weak self] scale in
+            self?.applyGlobalSizeScale(scale)
         }
-        sizeRoot.submenu = sizeMenu
-        menu.addItem(sizeRoot)
+        menu.addItem(sizeItem)
 
         menu.addItem(menuItem("全部显示", #selector(showAllPets)))
         menu.addItem(menuItem("全部隐藏", #selector(hideAllPets)))
         menu.addItem(menuItem("全部归位", #selector(resetAllPositions)))
+        menu.addItem(menuItem("紧凑排列（一键收拢）", #selector(compactArrange)))
         menu.addItem(.separator())
         menu.addItem(menuItem("关于桌宠合集", #selector(showAbout)))
         menu.addItem(menuItem("退出桌宠合集", #selector(quitApp)))
@@ -235,14 +232,32 @@ final class PetHubApp: NSObject, NSApplicationDelegate, PetHubContext {
         hubDefaults.set(linkSizeEnabled, forKey: "hub.linkSize")
     }
 
-    @objc private func setAllSizeTiers(_ sender: NSMenuItem) {
-        for pet in pets.values { pet.applySizeTier(sender.tag) }
+    /// 总菜单的滑块：不分联动开关，直接四只一起设。
+    private func applyGlobalSizeScale(_ scale: Double) {
+        for pet in pets.values { pet.applySizeScale(scale) }
     }
 
-    /// 四只档位一致时返回该档位，否则 nil（菜单里就不打勾）。
-    private func commonSizeTier() -> Int? {
-        let tiers = Set(PetLayout.order.compactMap { pets[$0]?.sizeTier })
-        return tiers.count == 1 ? tiers.first : nil
+    /// 四只比例一致时返回该比例，否则 nil（滑块回 100%，拖动即统一）。
+    private func commonScale() -> Double? {
+        let scales = PetLayout.order.compactMap { pets[$0]?.sizeScale }
+        guard let first = scales.first else { return nil }
+        return scales.allSatisfy { abs($0 - first) < 0.01 } ? first : nil
+    }
+
+    /// 一键紧凑排列：间距从 36 收到 6，边距 24 收到 16，贴右下角排一行。
+    @objc private func compactArrange() {
+        guard let screen = PetLayout.screen() else { return }
+        let gap: CGFloat = 6
+        let margin: CGFloat = 16
+        let widths = PetLayout.order.map { pets[$0]?.visualWidth ?? 0 }
+        let total = widths.reduce(0, +) + gap * CGFloat(max(0, widths.count - 1))
+        var x = max(screen.visibleFrame.minX + margin,
+                    screen.visibleFrame.maxX - margin - total)
+        let bottom = screen.visibleFrame.minY + margin
+        for (index, id) in PetLayout.order.enumerated() {
+            pets[id]?.moveToRow(left: x, bottom: bottom)
+            x += widths[index] + gap
+        }
     }
 
     @objc private func showAllPets() {
@@ -263,7 +278,7 @@ final class PetHubApp: NSObject, NSApplicationDelegate, PetHubContext {
             return "\(id.title) \(audio.clipCount) 句"
         }.joined(separator: " · ")
         let alert = NSAlert()
-        alert.messageText = "桌宠合集 1.1.0"
+        alert.messageText = "桌宠合集 1.2.0"
         alert.informativeText = """
         薄肌 · 太对了 · 峰哥 · 果冻，四只桌宠住在同一个 App 里。
         \(counts)
@@ -289,7 +304,7 @@ final class PetHubApp: NSObject, NSApplicationDelegate, PetHubContext {
     }
 
     private func dumpState() {
-        print("version=1.1.0 relay=\(relayEnabled ? "on" : "off") pets=\(pets.count)")
+        print("version=1.2.0 relay=\(relayEnabled ? "on" : "off") pets=\(pets.count)")
         for id in PetLayout.order {
             print(pets[id]?.stateDescription ?? "\(id.rawValue) missing")
         }
@@ -371,6 +386,17 @@ final class PetHubApp: NSObject, NSApplicationDelegate, PetHubContext {
             print("\(ok ? "OK" : "FAIL") \(name)")
             if !ok { failures.append(name) }
         }
+        func visibleFrame(of id: PetID) -> NSRect? {
+            if let audio = pets[id] as? AudioPetController {
+                return audio.windowFrame
+            }
+            if let jelly = pets[id] as? JellyPetController {
+                let side = jelly.iconSide
+                return NSRect(x: jelly.center.x - side / 2, y: jelly.center.y - side / 2,
+                              width: side, height: side)
+            }
+            return nil
+        }
 
         check(pets.count == PetLayout.order.count, "四只桌宠都建好了（\(pets.count) 只）")
         check(relayEnabled, "联动默认开启")
@@ -426,43 +452,71 @@ final class PetHubApp: NSObject, NSApplicationDelegate, PetHubContext {
         check(hubMenu.items.count >= 10, "菜单栏菜单结构完整（\(hubMenu.items.count) 项）")
         check(setOfVisibilityStates().count == 1, "四只默认都可见")
 
-        // 大小联动：四只按各自的三档同步；关掉后各改各的。
+        // 大小滑块：总菜单滑一次四只一起变；单只菜单的滑块受「大小联动」控制。
         let savedLink = linkSizeEnabled
         linkSizeEnabled = true
-        for pet in pets.values { pet.applySizeTier(2) }
-        check(PetLayout.order.allSatisfy { pets[$0]?.sizeTier == 2 }, "统一大小：四只一起到「大」")
-        pets[.shaolan]?.applySizeTier(0)
-        petSizeTierChanged(.shaolan, tier: 0)
-        check(PetLayout.order.allSatisfy { pets[$0]?.sizeTier == 0 }, "大小联动：改一只，其余三只跟着变")
+        for pet in pets.values { pet.applySizeScale(1.0) }
 
-        // 再走一遍真实菜单 action，确认 UI 接线也通（不是只有内部方法对）。
-        if let sizeRoot = hubMenu.items.first(where: { $0.title == "统一大小" }),
-           let big = sizeRoot.submenu?.items.first(where: { $0.title == "大" }),
-           let action = big.action {
-            NSApp.sendAction(action, to: big.target, from: big)
-            check(PetLayout.order.allSatisfy { pets[$0]?.sizeTier == 2 },
-                  "菜单「统一大小 → 大」四只一起变")
+        if let hubSlider = hubMenu.items.compactMap({ $0.view as? SizeSliderView }).first {
+            hubSlider.applyForTesting(1.6)
+            check(PetLayout.order.allSatisfy { abs((pets[$0]?.sizeScale ?? 0) - 1.6) < 0.02 },
+                  "总菜单大小滑块：四只一起到 160%")
         } else {
-            check(false, "菜单里找不到「统一大小」")
+            check(false, "总菜单里找不到大小滑块")
         }
         if let audioMenu = pets[.shaolan]?.makeMenu(),
-           let sizeRoot = audioMenu.items.first(where: { $0.title == "人物大小" }),
-           let small = sizeRoot.submenu?.items.first(where: { $0.title == "小" }),
-           let action = small.action {
-            NSApp.sendAction(action, to: small.target, from: small)
-            check(PetLayout.order.allSatisfy { pets[$0]?.sizeTier == 0 },
-                  "真实菜单：改薄肌大小，其余三只跟着变")
+           let petSlider = audioMenu.items.compactMap({ $0.view as? SizeSliderView }).first {
+            petSlider.applyForTesting(0.7)
+            check(PetLayout.order.allSatisfy { abs((pets[$0]?.sizeScale ?? 0) - 0.7) < 0.02 },
+                  "薄肌菜单滑块：联动开，四只一起到 70%")
         } else {
-            check(false, "薄肌菜单里找不到大小三档")
+            check(false, "薄肌菜单里找不到大小滑块")
         }
-
         linkSizeEnabled = false
-        pets[.shaolan]?.applySizeTier(2)
-        petSizeTierChanged(.shaolan, tier: 2)
-        check(pets[.shaolan]?.sizeTier == 2 && pets[.sunpet]?.sizeTier == 0,
-              "关掉大小联动后各改各的")
-        for pet in pets.values { pet.applySizeTier(1) }
+        if let audioMenu = pets[.shaolan]?.makeMenu(),
+           let petSlider = audioMenu.items.compactMap({ $0.view as? SizeSliderView }).first {
+            petSlider.applyForTesting(1.4)
+            check(abs((pets[.shaolan]?.sizeScale ?? 0) - 1.4) < 0.02
+                  && abs((pets[.sunpet]?.sizeScale ?? 0) - 0.7) < 0.02,
+                  "关掉大小联动后只改自己")
+        }
         linkSizeEnabled = savedLink
+        for pet in pets.values { pet.applySizeScale(1.0) }
+
+        // 紧凑排列：一键收拢（间距 6、边距 16），在屏内且不重叠。
+        for pet in pets.values { pet.moveToDefaultPosition() }
+        if let compact = makeHubMenu().items.first(where: { $0.title == "紧凑排列（一键收拢）" }),
+           let action = compact.action {
+            NSApp.sendAction(action, to: compact.target, from: compact)
+            var compactFrames: [PetID: NSRect] = [:]
+            for id in PetLayout.order { compactFrames[id] = visibleFrame(of: id) }
+            if let screen = PetLayout.screen() {
+                let bottom = screen.visibleFrame.minY + 16
+                check(compactFrames.count == PetLayout.order.count
+                      && compactFrames.values.allSatisfy { abs($0.minY - bottom) < 1.5 },
+                      "紧凑排列：四只底边对齐")
+                check(compactFrames.values.allSatisfy { screen.visibleFrame.contains($0) },
+                      "紧凑排列：四只都在屏幕可见区")
+                var overlap = false
+                for (index, first) in PetLayout.order.enumerated() {
+                    for second in PetLayout.order.dropFirst(index + 1) {
+                        if let a = compactFrames[first], let b = compactFrames[second], a.intersects(b) {
+                            overlap = true
+                        }
+                    }
+                }
+                check(!overlap, "紧凑排列：四只互不重叠")
+                if let a = compactFrames[.shaolan], let b = compactFrames[.sunpet] {
+                    check(abs((b.minX - a.maxX) - 6) < 1.5, "紧凑排列：语音窗口间距 6pt")
+                }
+                if let a = compactFrames[.fengge], let b = compactFrames[.jelly] {
+                    check(abs((b.minX - a.maxX) - 6) < 1.5, "紧凑排列：峰哥与果冻图标间距 6pt")
+                }
+            }
+        } else {
+            check(false, "菜单里找不到紧凑排列")
+        }
+        for pet in pets.values { pet.moveToDefaultPosition() }
 
         // 默认布局：三只语音窗口 + 果冻的可见图标，互不重叠且都在屏幕可见区里。
         for id in PetLayout.order {
@@ -474,15 +528,7 @@ final class PetHubApp: NSObject, NSApplicationDelegate, PetHubContext {
             }
         }
         var layoutFrames: [PetID: NSRect] = [:]
-        for id in PetLayout.order {
-            if let audio = pets[id] as? AudioPetController {
-                layoutFrames[id] = audio.windowFrame
-            } else if let jelly = pets[id] as? JellyPetController {
-                let side = jelly.iconSide
-                layoutFrames[id] = NSRect(x: jelly.center.x - side / 2, y: jelly.center.y - side / 2,
-                                          width: side, height: side)
-            }
-        }
+        for id in PetLayout.order { layoutFrames[id] = visibleFrame(of: id) }
         check(layoutFrames.count == PetLayout.order.count, "四只默认布局都能算出来")
         if let screen = PetLayout.screen() {
             for id in PetLayout.order {

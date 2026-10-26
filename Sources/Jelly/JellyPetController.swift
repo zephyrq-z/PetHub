@@ -7,7 +7,8 @@ private enum Const {
     /// 窗口比图标大一圈：局部放大会把图案推出原范围，不能裁掉
     static let windowSide: CGFloat = 560
     static let defaultIconSide: CGFloat = 128
-    static let sizeChoices: [(name: String, side: CGFloat)] = [("小", 104), ("中", 128), ("大", 160)]
+    static var minIconSide: CGFloat { defaultIconSide * CGFloat(PetSizing.minScale) }
+    static var maxIconSide: CGFloat { defaultIconSide * CGFloat(PetSizing.maxScale) }
     /// 局部肿起的影响半径，相对图标尺寸
     static let bulgeRadiusRatio: CGFloat = 0.35
     /// 拉动距离的软上限，相对图标尺寸（要和 JellyModel.swift 里的值一致）
@@ -384,7 +385,8 @@ final class JellyPetController: NSObject, PetHost {
         self.settings = settings
 
         let side = settings.int(SettingsKey.iconSide, Int(Const.defaultIconSide))
-        iconSide = side > 0 ? CGFloat(side) : Const.defaultIconSide
+        let clamped = min(max(CGFloat(side), Const.minIconSide), Const.maxIconSide)
+        iconSide = clamped > 0 ? clamped : Const.defaultIconSide
 
         let savedStyle = settings.int(SettingsKey.style, JellyStyle.claude.rawValue)
         style = JellyStyle(rawValue: savedStyle) ?? .claude
@@ -485,16 +487,10 @@ final class JellyPetController: NSObject, PetHost {
         back.target = self
         menu.addItem(back)
 
-        let sizeItem = NSMenuItem(title: "大小", action: nil, keyEquivalent: "")
-        let sizeMenu = NSMenu()
-        for (name, side) in Const.sizeChoices {
-            let item = NSMenuItem(title: name, action: #selector(changeSize(_:)), keyEquivalent: "")
-            item.target = self
-            item.tag = Int(side)
-            item.state = abs(side - iconSide) < 0.5 ? .on : .off
-            sizeMenu.addItem(item)
+        let sizeItem = NSMenuItem()
+        sizeItem.view = SizeSliderView(scale: sizeScale) { [weak self] scale in
+            self?.changeSizeScale(scale)
         }
-        sizeItem.submenu = sizeMenu
         menu.addItem(sizeItem)
 
         let iconItem = NSMenuItem(title: "图标", action: nil, keyEquivalent: "")
@@ -533,24 +529,29 @@ final class JellyPetController: NSObject, PetHost {
         settings.set(choice.rawValue, SettingsKey.style)
     }
 
-    @objc private func changeSize(_ sender: NSMenuItem) {
-        iconSide = CGFloat(sender.tag)
-        if !diagnostic { settings.set(Int(iconSide), SettingsKey.iconSide) }
-        if let tier = Const.sizeChoices.firstIndex(where: { Int($0.side) == sender.tag }) {
-            context?.petSizeTierChanged(.jelly, tier: tier)
-        }
+    private func changeSizeScale(_ scale: Double) {
+        applySizeScale(scale)
+        context?.petSizeScaleChanged(.jelly, scale: sizeScale)
     }
 
-    /// 0=小、1=中、2=大。
-    var sizeTier: Int {
-        Const.sizeChoices.firstIndex(where: { Int($0.side) == Int(iconSide) }) ?? 1
+    /// 1.0 = 默认大小（128）；滑块范围 50%–180%。
+    var sizeScale: Double { Double(iconSide / Const.defaultIconSide) }
+
+    /// 主控滑块 / 别的桌宠改了大小后调这里，只应用不回调。
+    func applySizeScale(_ scale: Double) {
+        let clamped = min(max(scale, PetSizing.minScale), PetSizing.maxScale)
+        iconSide = Const.defaultIconSide * CGFloat(clamped)
+        if !diagnostic { settings.set(Int(iconSide), SettingsKey.iconSide) }
     }
 
-    /// 主控「统一大小」/ 别的桌宠改了大小后调这里，只应用不回调。
-    func applySizeTier(_ tier: Int) {
-        guard Const.sizeChoices.indices.contains(tier) else { return }
-        iconSide = Const.sizeChoices[tier].side
-        if !diagnostic { settings.set(Int(iconSide), SettingsKey.iconSide) }
+    var visualWidth: CGFloat { iconSide }
+
+    func moveToRow(left: CGFloat, bottom: CGFloat) {
+        center = CGPoint(x: left + iconSide / 2, y: bottom + iconSide / 2)
+        model.settleAll()
+        applyCenter()
+        if !diagnostic { persist() }
+        view.needsDisplay = true
     }
 
     @objc private func hidePet() {

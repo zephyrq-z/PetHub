@@ -38,6 +38,7 @@ App 开 `LSUIElement`，不占 Dock，只有一个菜单栏状态项。
 | `Sources/Hub/PetHost.swift` | `PetHost` / `PetHubContext` 协议，主控与四只之间的唯一接口 |
 | `Sources/Hub/PetRelay.swift` | `PetSpeech` 与 `PetRelay`：进程内广播、hop/root 字段、trace 输出 |
 | `Sources/Hub/PetLayout.swift` | 右下角一排的槽位宽度、间距、每只的默认原点 |
+| `Sources/Hub/SizeSliderView.swift` | 菜单里的 50%–180% 大小滑块（`NSMenuItem.view` + 连续 `NSSlider`） |
 | `Sources/Hub/PetHubApp.swift` | 主控：单实例、启动顺序、菜单栏、显隐、联动开关、CLI 模式、自检 |
 | `Sources/Audio/AudioPetController.swift` | 三只语音桌宠的通用引擎：播放、轮播池、接话、菜单、状态、自检 |
 | `Sources/Audio/AudioPetViews.swift` | `AudioPetPanel` / 头像视图 / 字幕，窗口尺寸与布局参数 |
@@ -159,9 +160,13 @@ struct PetSpeech: Equatable {
 - 动画：薄肌 / 峰哥竖直压扁 12%、30fps；太对了绕中心 ±0.055 rad 摇晃 + 上浮 3px；
   系统开启「减少动态效果」时不动。果冻全部是弹簧状态（按压 / 局肿 / 拉动 / 回弹），窗口坐标不动。
 - 位置、大小、音量、轮播勾选等都会持久化（见下表），启动时恢复；恢复点不在任何屏幕内时退回默认站位。
-- 大小联动默认开：菜单栏「大小联动」勾选时，在任意一只的菜单里改大小，会按四只各自的「小 / 中 / 大」
-  三档同步（薄肌 190/260/340、太对了 130/180/240、峰哥 190/260/340、果冻 104/128/160，不会强行拉成同样像素）。
-  「统一大小」子菜单可以直接把四只一起设成同一档；关掉联动后各改各的。
+- 大小用滑块调（`Sources/Hub/SizeSliderView.swift`）：范围是各自默认大小的 **50%–180%**，默认 100%。
+  总菜单里的滑块直接四只一起变；每只右键菜单里也有一条自己的滑块。四只比例不同，所以滑块存的是
+  「相对各自默认大小的比例」，不会强行拉成同样像素。
+- 「大小联动」默认开：拖任意一只菜单里的滑块，另外三只按同一比例一起变；关掉后各改各的。
+  总菜单的滑块不受这个开关影响，永远是四只一起。
+- 「紧凑排列」一键收拢：间距从默认 36pt 收到约 6pt、屏幕边距从 24pt 收到 16pt，贴着右下角排一行；
+  「全部归位」还是原来的标准间距。
 - 自检里有默认布局断言：三只语音窗口 + 果冻的 128×128 可见图标互不重叠，且都完整落在屏幕可见区内。
   果冻的 560×560 透明窗口允许伸出屏幕（点击区域只按中间的图标算），这是上游原有的手感，不算布局错误。
 
@@ -175,7 +180,7 @@ struct PetSpeech: Equatable {
 | 键（去掉前缀） | 类型 | 默认 | 说明 |
 | --- | --- | --- | --- |
 | `volume` | Float | 0.65 | 0 / 0.25 / 0.5 / 0.65 / 0.8 / 1，菜单里 6 档 |
-| `size` | Double | 260 / 180 / 260 | 人物（头像）边长，菜单三档 |
+| `size` | Double | 260 / 180 / 260 | 窗口宽度，滑块存的是默认大小 × 比例（50%–180%） |
 | `randomMode` | Bool | true | 随机一句 / 固定模式 |
 | `pinnedID` | Int | 无 | 固定模式选中的句子 id；键不存在＝未固定 |
 | `excludedIDs` | [Int] | 薄肌首次按素材 `defaultOff`；其余空 | 「轮播内容」里勾掉的句子 |
@@ -187,7 +192,7 @@ struct PetSpeech: Equatable {
 | 键 | 类型 | 默认 | 说明 |
 | --- | --- | --- | --- |
 | `centerX` / `centerY` | Double | 果冻默认槽位 | 图标中心（屏幕坐标） |
-| `iconSide` | Int | 128 | 104 / 128 / 160 |
+| `iconSide` | Int | 128 | 图标边长，滑块 50%–180%（64–230） |
 | `style` | Int | 0 | `JellyStyle`：0=Claude，1=GPT，2=Gemini |
 
 主控：
@@ -195,7 +200,7 @@ struct PetSpeech: Equatable {
 | 键 | 类型 | 默认 | 说明 |
 | --- | --- | --- | --- |
 | `hub.relayEnabled` | Bool | true | 全局「捧哏联动」开关 |
-| `hub.linkSize` | Bool | true | 「大小联动」：改一只的大小是否同步到另外三只 |
+| `hub.linkSize` | Bool | true | 「大小联动」：每只菜单里的滑块是否同步到另外三只 |
 
 旧的四只独立 App 的偏好不会自动迁过来：bundle id 不同（例如 `local.shaolan.desktop-pet`），
 合集按自己的默认布局重新摆。自检模式只读不写。
@@ -210,9 +215,9 @@ struct PetSpeech: Equatable {
 | 命令 | 作用 | 输出 / 退出码 |
 | --- | --- | --- |
 | `-h` / `--help` | 打印用法 | 退出码 0 |
-| `--self-test` | 四只 controller 自检 + 主控断言（relay、三只 reaction、菜单、大小联动、显隐、默认布局、诊断字段），目前 201 项 | 每项 `OK` / `FAIL`，最后一行 `PASS` 或 `FAIL: [...]`；失败退出码 1 |
+| `--self-test` | 四只 controller 自检 + 主控断言（relay、三只 reaction、菜单、大小联动、显隐、默认布局、诊断字段），目前 204 项 | 每项 `OK` / `FAIL`，最后一行 `PASS` 或 `FAIL: [...]`；失败退出码 1 |
 | `--chain-test` | 模拟点薄肌，实测四步捧哏链 | trace + `[chain]` 记录，成功 `PASS 四步捧哏链：…`，失败 `FAIL`；约 21 秒，偶发丢句自动重试一次 |
-| `--dump-state` | 打印当前状态后退出 | 首行 `version=1.1.0 relay=on pets=4`，随后每只一行，见下 |
+| `--dump-state` | 打印当前状态后退出 | 首行 `version=1.2.0 relay=on pets=4`，随后每只一行，见下 |
 | `--preview <目录>` | 四只各离屏渲染一张 `preview-<id>.png`（2x），再拼一张 `preview-all.png` | 打印写出的路径；目录不存在会自动建 |
 | `--trace` | **正常启动**，额外把联动和桌宠的每一跳打到 stdout（受单实例限制、会写偏好） | `[relay] <时间戳> …`、`[trace] <时间戳> pet=<id> …` |
 | `--probe-sensor` | 检查这台 Mac 有没有可用的 SPU 运动传感器 | `sensor available; open result=…; uid=…` 或 `sensor unavailable` |
@@ -248,7 +253,7 @@ shaolan visible=true window=on size=260x296 pos=1780,24 clips=37 pool=8 mode=ran
 3. 建 `Contents/{MacOS,Resources}`；拷 `Assets/{shaolan,sun,fengge,jelly}` 四个目录、
    `Assets/AppIcon.icns`、`LICENSE`、`NOTICE.md`、`licenses/` 到 Resources。
 4. 写 `Contents/Info.plist`：`CFBundleExecutable=PetHub`、`CFBundleIdentifier=local.pethub.app`、
-   `CFBundleName/DisplayName=桌宠合集`、`CFBundleShortVersionString=1.1.0`、`CFBundleVersion=1`、
+   `CFBundleName/DisplayName=桌宠合集`、`CFBundleShortVersionString=1.2.0`、`CFBundleVersion=1`、
    `LSMinimumSystemVersion=14.0`、`LSUIElement=true`、`NSHighResolutionCapable=true`、
    `CFBundleIconFile=AppIcon`。
 5. `xattr -cr` → `codesign --force --sign -` → `codesign --verify`。
@@ -258,11 +263,11 @@ shaolan visible=true window=on size=260x296 pos=1780,24 clips=37 pool=8 mode=ran
 
 ```bash
 ./build.sh                 # 编译 + 自检 → build/桌宠合集.app，最后一行 PASS
-./build.sh --package       # 另出 dist/PetHub-1.1.0.zip / .dmg / .sha256（卷名「桌宠合集」）
+./build.sh --package       # 另出 dist/PetHub-1.2.0.zip / .dmg / .sha256（卷名「桌宠合集」）
 ./build.sh --no-self-test  # 无图形会话时跳过自检（发布前别用）
 ```
 
-环境变量 `PET_VERSION`（默认 1.1.0）、`PET_BUILD`（默认 1）。dmg 里是
+环境变量 `PET_VERSION`（默认 1.2.0）、`PET_BUILD`（默认 1）。dmg 里是
 「桌宠合集.app」+「Applications」软链，拖进去就是安装。
 
 图标改动后重新生成：

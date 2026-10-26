@@ -20,7 +20,13 @@ protocol PetHubContext: AnyObject {
     func quitApp()
     /// 「大小联动」总开关：打开时改任意一只的大小会同步到另外三只。
     var linkSizeEnabled: Bool { get }
-    func petSizeTierChanged(_ id: PetID, tier: Int)
+    func petSizeScaleChanged(_ id: PetID, scale: Double)
+}
+
+/// 大小滑块的统一范围：相对每只默认大小的 50%–180%。
+enum PetSizing {
+    static let minScale = 0.5
+    static let maxScale = 1.8
 }
 
 /// 合集里的一只桌宠。语音桌宠和果冻都实现这一套接口，主控不关心具体实现。
@@ -51,9 +57,13 @@ protocol PetHost: AnyObject {
     func showStartupHint()
     /// `--dump-state` 用的一行状态。
     var stateDescription: String { get }
-    /// 统一大小：0=小、1=中、2=大（按各只自己的三档映射）。
-    func applySizeTier(_ tier: Int)
-    var sizeTier: Int { get }
+    /// 相对默认大小（1.0 = 默认）的缩放。滑块直接改这个值。
+    var sizeScale: Double { get }
+    func applySizeScale(_ scale: Double)
+    /// 横向可见宽度：语音桌宠是窗口宽，果冻是图标边长。紧凑排列用它算间距。
+    var visualWidth: CGFloat { get }
+    /// 把这只放到一排里的指定左边界/底边（语音桌宠按窗口原点，果冻按图标中心换算）。
+    func moveToRow(left: CGFloat, bottom: CGFloat)
 }
 
 extension PetHost {
@@ -63,6 +73,8 @@ extension PetHost {
     }
 
     func showStartupHint() {}
-    func applySizeTier(_ tier: Int) {}
-    var sizeTier: Int { 1 }
+    var sizeScale: Double { 1.0 }
+    func applySizeScale(_ scale: Double) {}
+    var visualWidth: CGFloat { panelSize.width }
+    func moveToRow(left: CGFloat, bottom: CGFloat) {}
 }

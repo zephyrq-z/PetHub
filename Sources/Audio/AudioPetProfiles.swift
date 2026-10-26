@@ -80,8 +80,6 @@ struct AudioPetProfile {
     let menuHeader: String
     let defaultSize: CGFloat
     let defaultVolume: Float
-    let sizeChoices: [(name: String, side: CGFloat)]
-    let sizeLabel: String
     let animation: AudioPetAnimation
     let layout: AudioFaceLayout
     let hint: String
@@ -98,8 +96,8 @@ struct AudioPetProfile {
     /// 太对了的机身摇晃。
     let hasMotion: Bool
 
-    var minSize: CGFloat { sizeChoices.map(\.side).min() ?? defaultSize }
-    var maxSize: CGFloat { sizeChoices.map(\.side).max() ?? defaultSize }
+    var minSize: CGFloat { defaultSize * PetSizing.minScale }
+    var maxSize: CGFloat { defaultSize * PetSizing.maxScale }
 }
 
 enum AudioPetProfiles {
@@ -109,8 +107,6 @@ enum AudioPetProfiles {
         menuHeader: "薄肌桌宠",
         defaultSize: 260,
         defaultVolume: 0.65,
-        sizeChoices: [("小", 190), ("中", 260), ("大", 340)],
-        sizeLabel: "人物大小",
         animation: .squash,
         layout: AudioFaceLayout(insetX: 8, insetY: 8, captionBand: 44),
         hint: "点我说一句 · 右键设置",
@@ -130,8 +126,6 @@ enum AudioPetProfiles {
         menuHeader: "孙宇晨 · 太对了",
         defaultSize: 180,
         defaultVolume: 0.65,
-        sizeChoices: [("小", 130), ("中", 180), ("大", 240)],
-        sizeLabel: "头像大小",
         animation: .tilt,
         layout: AudioFaceLayout(insetX: 12, insetY: 12, captionBand: 60),
         hint: "点我一下 · 右键设置",
@@ -153,8 +147,6 @@ enum AudioPetProfiles {
         menuHeader: "好事桌宠",
         defaultSize: 260,
         defaultVolume: 0.65,
-        sizeChoices: [("小", 190), ("中", 260), ("大", 340)],
-        sizeLabel: "人物大小",
         animation: .squash,
         layout: AudioFaceLayout(insetX: 8, insetY: 8, captionBand: 44),
         hint: "点我说一句 · 右键设置",
